@@ -1,0 +1,22 @@
+http://www.websequencediagrams.com/
+
+title: meta protocol sequence
+Client->Host: request protocol version
+Host->Client: responce version
+note left of Client: Disconnect if protocol not supported
+Client->Cache: get object
+note over Cache: if no object
+Cache->Host: get object class
+Host->Cache: return object class
+note right of Cache: return full hierarchy
+Cache->Host: get class meta info
+note right of Cache: for each class name
+Host->Cache: return class meta info
+Cache->Client: return object proxy
+Host->Client: emit signal
+note left of Client: objname, args
+Client->Client: activate slots
+Client->Host: call method
+note right of Host: objname, type, id, args
+Host->Host: qt_metacall
+Host->Client: return from call
