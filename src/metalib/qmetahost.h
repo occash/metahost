@@ -4,7 +4,7 @@
 #include "global.h"
 
 #include <QObject>
-#include <QList>
+#include <QMap>
 
 class QTcpTransport;
 struct QMetaObject;
@@ -21,6 +21,10 @@ public:
 
 private:
     bool checkRevision(const QMetaObject *);
+
+private:
+    typedef QMap<QString, QObject *> ObjectMap;
+    ObjectMap _objects;
 
 };
 

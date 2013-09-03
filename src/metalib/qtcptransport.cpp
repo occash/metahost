@@ -87,20 +87,26 @@ void QTcpTransport::dispatch()
     if(!client)
         return;
 
-    quint16 size;
-    QByteArray data;
     QDataStream in(client);
     in.setVersion(QDataStream::Qt_4_8);
+    quint16 size = 0;
     in >> size;
-    if(client->bytesAvailable() < size)
+    qDebug() << "Data size:" << size;
+
+    if(client->bytesAvailable() != size)
     {
         //Make appropriate logging
         qDebug() << "Error: Number of bytes manipulated!";
+        qDebug() << "Bytes available:" << client->bytesAvailable();
+        qDebug() << "Bytes expected:" << size;
+
         return;
     }
 
+    QByteArray data;
     in >> data;
     qDebug() << "Data recieved:" << data;
+    qDebug() << data.size();
 
     //process further
 }
