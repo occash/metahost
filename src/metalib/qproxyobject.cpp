@@ -1,5 +1,5 @@
 #include "qproxyobject.h"
-
+/*
 QProxyObject::QProxyObject(QObject *parent) :
     QObject(parent)
 {
@@ -17,3 +17,4 @@ void *QProxyObject::qt_metacast(const char *)
 int QProxyObject::qt_metacall(QMetaObject::Call, int, void **)
 {
 }
+*/

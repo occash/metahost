@@ -1,12 +1,16 @@
 TEMPLATE = app
 
 CONFIG += qt
-QT += core
+QT += core network
 
-ROOTDIR = ..
+ROOTDIR = ../..
 MAINTARGET = metahost
 
 DESTDIR = $$ROOTDIR/bin
+
+INCLUDEPATH += ../metalib
+
+LIBS += -L$$ROOTDIR/bin -lmetalib
 
 CONFIG(debug, debug|release){
     DEFINES += DEBUG
@@ -19,12 +23,8 @@ CONFIG(release, debug|release){
 }
 
 SOURCES += \
-	main.cpp \
-	moctest.cpp \
-    qproxyobject.cpp
+    main.cpp \
+    moctest.cpp
 
 HEADERS += \
-	moctest.h \
-    proto.h \
-    qproxyobject.h
-	
+    moctest.h

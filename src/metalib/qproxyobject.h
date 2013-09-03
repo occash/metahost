@@ -3,7 +3,7 @@
 
 #include <QObject>
 
-class QProxyObject : public QObject
+/*class QProxyObject : public QObject
 {
 public:
     Q_OBJECT_CHECK
@@ -16,6 +16,6 @@ public:
 public:
     QProxyObject(QObject *parent = 0);
     
-};
+};*/
 
 #endif // QPROXYOBJECT_H
