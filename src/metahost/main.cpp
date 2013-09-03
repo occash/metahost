@@ -164,6 +164,8 @@ int computeMetaDataSize(QObject *obj)
     return metaSize;
 }
 
+#include "qtcptransport.h"
+#include <QHostAddress>
 
 int main(int argc, char *argv[])
 {
@@ -183,6 +185,7 @@ int main(int argc, char *argv[])
 	QObject::connect(&mtest, SIGNAL(stringChanged()), &mtest2, SLOT(slot1()));
 	mtest.setString("LOLO");
 
+    QTcpTransport transport(QHostAddress::Any, 6565);
 
 	return a.exec();
 }
