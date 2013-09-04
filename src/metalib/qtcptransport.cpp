@@ -1,4 +1,5 @@
 #include "qtcptransport.h"
+#include "qmetahost.h"
 
 #include <QtNetwork/QTcpSocket>
 #include <QtNetwork/QTcpServer>
@@ -89,25 +90,28 @@ void QTcpTransport::dispatch()
 
     QDataStream in(client);
     in.setVersion(QDataStream::Qt_4_8);
+
     quint16 size = 0;
     in >> size;
-    qDebug() << "Data size:" << size;
+    qDebug() << "Bytes available" << client->bytesAvailable();
+    qDebug() << "Data expected:" << size;
 
-    if(client->bytesAvailable() != size)
+    if(client->bytesAvailable() < size)
     {
         //Make appropriate logging
         qDebug() << "Error: Number of bytes manipulated!";
-        qDebug() << "Bytes available:" << client->bytesAvailable();
-        qDebug() << "Bytes expected:" << size;
-
         return;
     }
 
     QByteArray data;
     in >> data;
-    qDebug() << "Data recieved:" << data;
+    qDebug() << "Data received:" << data;
     qDebug() << data.size();
 
-    //process further
+    QMetaHost *host = qobject_cast<QMetaHost *>(parent());
+    if(!host)
+        return;
+
+    host->processCommand(client, &data);
 }
 

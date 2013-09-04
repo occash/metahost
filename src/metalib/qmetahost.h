@@ -9,7 +9,9 @@
 
 class QTcpTransport;
 struct QMetaObject;
+class QIODevice;
 
+// ************Move to proto****************************************
 struct ClassMeta
 {
     QMetaObject *metaObject;
@@ -28,10 +30,17 @@ class METAEXPORT QMetaHost : public QObject
     Q_OBJECT
 
 public:
+    //Move to proto
+    enum Command {
+        ObjectInfo = 0x01,
+        ClassInfo = 0x02,
+        MethodCall = 0x03
+    };
     QMetaHost(QTcpTransport *transport, QObject *parent = 0);
     ~QMetaHost() {}
 
     bool registerObject(const QString& name, QObject *);
+    void processCommand(QIODevice *, QByteArray *data);
 
 private:
     bool checkRevision(const QMetaObject *);
@@ -44,6 +53,7 @@ private:
     typedef QMap<QString, ClassMeta> ClassMap;
     ObjectMap _objects;
     ClassMap _classes;
+    QTcpTransport *_transport;
 
 };
 

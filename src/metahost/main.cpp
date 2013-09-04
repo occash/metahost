@@ -63,13 +63,6 @@ int main(int argc, char *argv[])
 
 	MocTest mtest;
 	MocTest mtest2;
-	//prepareForRemote(&mtest);
-
-    //qDebug() << computeMetaStringSize(&mtest);
-    //qDebug() << computeMetaDataSize(&mtest);
-
-	//host = new QObjectHost();
-	//QObjectHost::host->init();
 
     QMetaObject::invokeMethod(&mtest, "slot1");
 	QObject::connect(&mtest, SIGNAL(stringChanged()), &mtest2, SLOT(slot1()));
