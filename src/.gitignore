@@ -1,0 +1,8 @@
+Makefile
+*.opensdf
+*.sdf
+*.sln
+*.suo
+*.user
+*.vcxproj
+*.vcxproj.filters
