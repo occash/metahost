@@ -43,8 +43,11 @@ QDataStream &operator>>(QDataStream &in, ClassMeta &classMeta)
 QDataStream &operator<<(QDataStream &out, const ObjectMeta &objMeta)
 {
     out << objMeta.classInfo.size();
-    out << objMeta.classInfo;
-
+    for (int i = 0; i < objMeta.classInfo.size(); ++i)
+    {
+        out << objMeta.classInfo.at(i);
+    }
+    
     return out;
 }
 

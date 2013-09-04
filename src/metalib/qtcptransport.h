@@ -27,6 +27,7 @@ private slots:
     void handleConnection();
     void handleDisconnection();
     void dispatch();
+    QByteArray pack(const QByteArray& data);
     
 private:
     typedef QList<QIODevice *> ClientList;

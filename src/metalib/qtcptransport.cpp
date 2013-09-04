@@ -45,12 +45,7 @@ void QTcpTransport::broadcast(const QByteArray &data)
 void QTcpTransport::write(QIODevice *client, const QByteArray &data)
 {
     //remove duplication
-    QByteArray dataToSend;
-    QDataStream out(&dataToSend, QIODevice::WriteOnly);
-    out.setVersion(QDataStream::Qt_4_8);
-
-    out << dataToSend.size();
-    out << data;
+    QByteArray dataToSend = pack(data);
 
     client->write(dataToSend);
 }
@@ -113,5 +108,18 @@ void QTcpTransport::dispatch()
         return;
 
     host->processCommand(client, &data);
+}
+
+QByteArray QTcpTransport::pack( const QByteArray& data )
+{
+    QByteArray packet;
+    QDataStream out(&packet, QIODevice::WriteOnly);
+    out.setVersion(QDataStream::Qt_4_8);
+    out << quint16(0);
+    out << data;
+    out.device()->seek(0);
+    out << (quint16)(packet.size() - sizeof(quint16));
+
+    return packet;
 }
 

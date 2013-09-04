@@ -1,6 +1,8 @@
 #include <QCoreApplication>
 #include <QtNetwork/QTcpSocket>
 #include <QHostAddress>
+#include <QFile>
+#include <QStringList>
 
 QByteArray pack(const QByteArray& data)
 {
@@ -32,6 +34,42 @@ int main(int argc, char *argv[])
     QByteArray packet = pack(data);    
 
     client.write(packet);
+
+    client.waitForReadyRead(50000);
+    
+    QDataStream in(&client);
+    in.setVersion(QDataStream::Qt_4_8);
+
+    quint16 size = 0;
+    in >> size;
+    qDebug() << "Bytes available" << client.bytesAvailable();
+    qDebug() << "Data expected:" << size;
+
+    if(client.bytesAvailable() < size)
+    {
+        //Make appropriate logging
+        qDebug() << "Error: Number of bytes manipulated!";
+    }
+
+    QByteArray datain;
+    in >> datain;
+    qDebug() << "Data received:" << datain;
+    qDebug() << datain.size();
+
+    //unpack
+    QDataStream instream(&datain, QIODevice::ReadOnly);
+    instream.setVersion(QDataStream::Qt_4_8);
+    int sz = 0;
+    instream >> sz;
+
+    QStringList classNames;
+
+    for(int i = 0; i < sz; ++i)
+    {
+        QString cname;
+        instream >> cname;
+        qDebug() << cname;
+    }
 
     return a.exec();
 }
