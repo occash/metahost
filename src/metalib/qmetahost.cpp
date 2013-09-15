@@ -1,79 +1,17 @@
 #include "qmetahost.h"
 #include "qtcptransport.h"
+#include "qproxyobject.h"
 
 #include <QMetaObject>
 #include <QDebug>
 #include <QDataStream>
 #include <QIODevice>
 #include <QMetaMethod>
+#include <QEventLoop>
+#include <QTimer>
 
 #define SERVER_OK 1 
 #define SERVER_BAD 0
-
-
-//*******************Streams*******************************************
-//Move to proto!!!
-QDataStream &operator<<(QDataStream &out, const ClassMeta &classMeta)
-{
-    out << classMeta.dataSize;
-    const uint *data = classMeta.metaObject->d.data;
-    out.writeRawData((const char *)data, classMeta.dataSize * sizeof(uint));
-    //Check the actual size of written bytes!!
-
-    out << classMeta.stringSize;
-    const char *string = classMeta.metaObject->d.stringdata;
-    out.writeRawData(string, classMeta.stringSize);
-
-    return out;
-}
-
-QDataStream &operator>>(QDataStream &in, ClassMeta &classMeta)
-{
-    if(!classMeta.metaObject)
-        return in;
-
-    quint32 dataSize;
-    in >> dataSize;
-    classMeta.dataSize = dataSize;
-    classMeta.metaObject->d.data = new uint[dataSize];
-    in.readRawData((char *)classMeta.metaObject->d.data, dataSize);
-
-    quint32 stringSize;
-    in >> stringSize;
-    classMeta.stringSize = stringSize;
-    classMeta.metaObject->d.stringdata = new char[stringSize];
-    in.readRawData((char *)classMeta.metaObject->d.stringdata, stringSize);
-
-    return in;
-}
-
-QDataStream &operator<<(QDataStream &out, const ObjectMeta &objMeta)
-{
-    out << objMeta.classInfo.size();
-    for (int i = 0; i < objMeta.classInfo.size(); ++i)
-    {
-        out << objMeta.classInfo.at(i);
-    }
-    
-    return out;
-}
-
-QDataStream &operator>>(QDataStream &in, ObjectMeta &objMeta)
-{
-    int size = 0;
-    in >> size;
-
-    QStringList classNames;
-
-    for(int i = 0; i < size; ++i)
-    {
-        QString cname;
-        in >> cname;
-        objMeta.classInfo << cname;
-    }
-
-    return in;
-}
 
 //*********************************************************************
 //**************Private hooks************************************
@@ -113,7 +51,7 @@ void QMetaHost::hostBeginCallback(QObject *caller, int method_index, void **argv
 				std::cout << "Object found" << std::endl;
 				QByteArray answer;
 				QDataStream out(&answer, QIODevice::ReadWrite);
-				out << Command::EmitSignal;
+				out << EmitSignal;
 				out << e;
 				out << method_index;
 
@@ -156,6 +94,9 @@ bool QMetaHost::initSignalSpy()
 {
 	QSignalSpyCallbackSet callback;
 	callback.signal_begin_callback = QMetaHost::hostBeginCallback;
+	callback.signal_end_callback = nullptr;
+	callback.slot_begin_callback = nullptr;
+	callback.slot_end_callback = nullptr;
 	qt_register_signal_spy_callbacks(callback);
 	return true;
 }
@@ -237,60 +178,102 @@ void QMetaHost::processCommand(QIODevice *client, QByteArray *data)
     switch(command)
     {
     case QueryObjectInfo:
-    {
-        QString objName;
-        in >> objName;
-        qDebug() << "Query object info:" << objName;
+		{
+			QString objName;
+			in >> objName;
+			qDebug() << "Query object info:" << objName;
 
-		out << ReturnObjectInfo;
-        ObjectMap::iterator i = _objects.find(objName);
-        if(i != _objects.end())
-        {
-            out << quint8(SERVER_OK);
-            out << *i;
-        }
-        else
-        {
-            out << quint8(SERVER_BAD);
-        }
-
-        //Debug output
-        qDebug() << "Answer to client:";
-        for (int i = 0; i < answer.size(); ++i)
-        {
-            qDebug() << answer.at(i);
-        }
-    }
+			out << ReturnObjectInfo;
+			ObjectMap::iterator i = _objects.find(objName);
+			if(i != _objects.end())
+			{
+				out << quint8(SERVER_OK);
+				out << objName;
+				out << *i;
+			}
+			else
+			{
+				out << quint8(SERVER_BAD);
+			}
+		}
         break;
+	case ReturnObjectInfo:
+		{
+			quint8 serverOk = 0;
+			in >> serverOk;
+			if(!serverOk)
+				return;
+
+			QString objName;
+			in >> objName;
+			ObjectMeta objMeta;
+			in >> objMeta;
+
+			bool quilified = true;
+			foreach(QString clname, objMeta.classInfo)
+			{
+				auto cl = _classes.find(clname);
+				quilified = cl != _classes.end();
+			}
+			objMeta.fullQuilified = quilified;
+			_objects.insert(objName, objMeta);
+
+			if(quilified)
+			{
+				QList<ClassMeta> metas;
+				foreach(const QString& clname, objMeta.classInfo)
+				{
+					auto cl = _classes.find(clname);
+					metas.append(*cl);
+				}
+				objMeta.object = new QProxyObject(metas);
+			}
+
+			emit gotObjectInfo();
+		}
+		return;
     case QueryClassInfo:
-    {
-        QString clsName;
-        in >> clsName;
-        qDebug() << "Query class info:" << clsName;
+		{
+			QString clsName;
+			in >> clsName;
+			qDebug() << "Query class info:" << clsName;
 
-        ClassMap::iterator i = _classes.find(clsName);
-        if(i != _classes.end())
-        {
-            out << quint8(SERVER_OK);
-            out << *i;
-        }
-        else
-        {
-            out << quint8(SERVER_BAD);
-        }
-
-        //Debug output
-        qDebug() << "Answer to client:";
-        for (int i = 0; i < answer.size(); ++i)
-        {
-            qDebug() << answer.at(i);
-        }
-    }
+			out << ReturnClassInfo;
+			ClassMap::iterator i = _classes.find(clsName);
+			if(i != _classes.end())
+			{
+				out << quint8(SERVER_OK);
+				out << clsName;
+				out << *i;
+			}
+			else
+			{
+				out << quint8(SERVER_BAD);
+			}
+		}
         break;
+	case ReturnClassInfo:
+		{
+			quint8 serverOk = 0;
+			in >> serverOk;
+			if(!serverOk)
+				return;
+
+			QString clsName;
+			in >> clsName;
+			ClassMeta clsMeta;
+			clsMeta.metaObject = new QMetaObject();
+			in >> clsMeta;
+
+			_classes.insert(clsName, clsMeta);
+
+			emit gotClassInfo();
+		}
+		return;
     case CallMetaMethod:
         break;
     default:
-        break;
+        return;
     }
 
     _transport->write(client, answer);
@@ -435,5 +418,58 @@ QObject *QMetaHost::getObject(const QString& name)
 	if(i != _objects.end())
 		return (*i).object;
 
-	return nullptr;
+	QByteArray data;
+	QDataStream outData(&data, QIODevice::WriteOnly);
+	outData.setVersion(QDataStream::Qt_4_8);
+
+	outData << QueryObjectInfo;
+	outData << name;
+
+	_transport->broadcast(data);
+	
+	QEventLoop loop;
+	QTimer timer;
+	connect(&timer, SIGNAL(timeout()), &loop, SLOT(quit()));
+	connect(this, SIGNAL(gotObjectInfo()), &loop, SLOT(quit()));
+	timer.start(3000);
+	loop.exec();
+
+	auto o = _objects.find(name);
+	if(o != _objects.end())
+	{
+		if((*o).fullQuilified)
+			return (*o).object;
+	}
+
+	ObjectMeta ometa = (*o);
+	foreach(const QString& clsName, ometa.classInfo)
+	{
+		auto c = _classes.find(clsName);
+		if(c == _classes.end())
+		{
+			QByteArray data;
+			QDataStream outData(&data, QIODevice::WriteOnly);
+			outData.setVersion(QDataStream::Qt_4_8);
+
+			outData << QueryClassInfo;
+			outData << clsName;
+
+			_transport->broadcast(data);
+
+			QEventLoop loop;
+			QTimer timer;
+			connect(&timer, SIGNAL(timeout()), &loop, SLOT(quit()));
+			connect(this, SIGNAL(gotClassInfo()), &loop, SLOT(quit()));
+			timer.start(10000);
+			loop.exec();
+
+			auto c = _classes.find(clsName);
+			if(c == _classes.end())
+				return nullptr;
+		}
+	}
+
+	(*o).fullQuilified = true;
+
+	return (*o).object;
 }

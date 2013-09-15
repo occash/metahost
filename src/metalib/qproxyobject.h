@@ -3,6 +3,10 @@
 
 #include <QObject>
 
+#include "proto.h"
+
+class QMetaHost;
+
 class QProxyObject : public QObject
 {
 public:
@@ -13,11 +17,12 @@ public:
     virtual void *qt_metacast(const char *);
     virtual int qt_metacall(QMetaObject::Call, int, void **);
 
-public:
-    QProxyObject(QObject *parent = 0);
+private:
+	friend class QMetaHost;
+    QProxyObject(const QList<ClassMeta>& metas, QObject *parent = 0);
 
 private:
-	QList<QMetaObject *> _metas;
+	QList<ClassMeta> _metas;
     
 };
 

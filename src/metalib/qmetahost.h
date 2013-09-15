@@ -2,6 +2,7 @@
 #define QMETAHOST_H
 
 #include "global.h"
+#include "proto.h"
 
 #include <QObject>
 #include <QMap>
@@ -10,20 +11,6 @@
 class QTcpTransport;
 struct QMetaObject;
 class QIODevice;
-
-// ************Move to proto****************************************
-struct ClassMeta
-{
-    QMetaObject *metaObject;
-    quint32 dataSize;
-    quint32 stringSize;
-};
-
-struct ObjectMeta
-{
-    QObject *object;
-    QStringList classInfo;
-};
 
 class METAEXPORT QMetaHost : public QObject
 {
@@ -67,6 +54,10 @@ private:
 	//static QList<QMetaHost *> _hosts;
 	static QMetaHost * _hosts;
 	static bool _initSpy;
+
+signals:
+	void gotObjectInfo();
+	void gotClassInfo();
 
 };
 

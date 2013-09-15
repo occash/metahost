@@ -1,16 +1,30 @@
 #ifndef PROTO_H
 #define PROTO_H
 
-namespace meta {
-namespace proto {
-enum msg {
-    revision, //negotiate qt meta system revision
-    metainfo, //request object metainfo
-    metacall, //call object meta method
-    emitsignal, //emit object signal
-    property //read/write object poperties
+#include <QObject>
+#include <QMetaObject>
+#include <QString>
+#include <QStringList>
+#include <QDataStream>
+
+struct ClassMeta
+{
+	QMetaObject *metaObject;
+	quint32 dataSize;
+	quint32 stringSize;
 };
-}
-}
+
+QDataStream &operator<<(QDataStream &out, const ClassMeta &classMeta);
+QDataStream &operator>>(QDataStream &in, ClassMeta &classMeta);
+
+struct ObjectMeta
+{
+	bool fullQuilified;
+	QObject *object;
+	QStringList classInfo;
+};
+
+QDataStream &operator<<(QDataStream &out, const ObjectMeta &objMeta);
+QDataStream &operator>>(QDataStream &in, ObjectMeta &objMeta);
 
 #endif // PROTO_H

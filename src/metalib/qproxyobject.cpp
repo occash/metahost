@@ -1,29 +1,31 @@
 #include "qproxyobject.h"
+#include "qmetahost.h"
 
-QProxyObject::QProxyObject(QObject *parent) :
-    QObject(parent)
+QProxyObject::QProxyObject(const QList<ClassMeta>& metas, QObject *parent) :
+    QObject(parent),
+	_metas(metas)
 {
 }
 
-
 const QMetaObject *QProxyObject::metaObject() const
 {
-	return _metas.last();
+	return _metas.first().metaObject;
 }
 
 void *QProxyObject::qt_metacast(const char *_clname)
 {
 	if (!_clname) return 0;
-	foreach(QMetaObject *meta, _metas)
+	foreach(const ClassMeta& meta, _metas)
 	{
-		if (!strcmp(_clname, meta->d.stringdata))
+		if (!strcmp(_clname, meta.metaObject->d.stringdata))
 			return reinterpret_cast<void *>(this);
 	}
 	return QObject::qt_metacast(_clname);
 }
 
-int QProxyObject::qt_metacall(QMetaObject::Call, int, void **)
+int QProxyObject::qt_metacall(QMetaObject::Call _c, int _id, void **_a)
 {
-	return 0;
+	qDebug() << _c << _id;
+	return _id;
 }
 
