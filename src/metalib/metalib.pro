@@ -22,7 +22,8 @@ CONFIG(release, debug|release){
 SOURCES += \
     qtcptransport.cpp \
     qproxyobject.cpp \
-    qmetahost.cpp
+    qmetahost.cpp \
+    proto.cpp
 
 HEADERS += \
     qtcptransport.h \

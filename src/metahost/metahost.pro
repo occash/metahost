@@ -24,7 +24,9 @@ CONFIG(release, debug|release){
 
 SOURCES += \
     main.cpp \
-    moctest.cpp
+    moctest.cpp \
+    serverwidget.cpp
 
 HEADERS += \
-    moctest.h
+    moctest.h \
+    serverwidget.h

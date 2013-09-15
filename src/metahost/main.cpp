@@ -1,8 +1,3 @@
-#include <QtCore/QCoreApplication>
-#include <QtCore/QMetaobject>
-#include <QtCore/QDebug>
-#include <QtNetwork/QTcpServer>
-
 /*void remoteCall(QObject *_o, QMetaObject::Call _c, int _id, void **_arg);
 
 struct RemoteExtraData : public QMetaObjectExtraData
@@ -52,26 +47,16 @@ bool prepareForRemote(QObject *obj)
 	return true;
 }*/
 
-#include "qtcptransport.h"
-#include "moctest.h"
-#include "qmetahost.h"
+#include <QApplication>
 
-#include <QHostAddress>
+#include "ServerWidget.h"
 
 int main(int argc, char *argv[])
 {
-	QCoreApplication a(argc, argv);
+	QApplication a(argc, argv);
 
-	//Create host
-	QTcpServer server;
-	server.listen(QHostAddress::Any, 6565);
-    QTcpTransport transport(&server);
-    QMetaHost host(&transport);
-
-	//Create and register object
-	MocTest mtest;
-    host.registerObject("MocTest1", &mtest);
-	mtest.slot1();
+	ServertWidget w;
+	w.show();
 
 	return a.exec();
 }

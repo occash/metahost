@@ -22,5 +22,9 @@ CONFIG(release, debug|release){
     DEFINES += QT_NO_DEBUG_OUTPUT
 }
 
+HEADERS += \
+	clientwidget.h
+
 SOURCES += \
+	clientwidget.cpp \
     main.cpp
