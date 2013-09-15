@@ -48,23 +48,42 @@ void QMetaHost::hostBeginCallback(QObject *caller, int method_index, void **argv
 		{
 			if(host->_objects.value(e).object == caller)
 			{
+				if(host->_objects.value(e).remote)
+					return;
+
 				std::cout << "Object found" << std::endl;
 				QByteArray answer;
 				QDataStream out(&answer, QIODevice::ReadWrite);
 				out << EmitSignal;
 				out << e;
-				out << method_index;
 
 				const QMetaObject *mo = caller->metaObject();
+
+				int parent = 0;
+				const QMetaObject *m = mo;
+				while (m) {
+					if(method_index >= m->methodOffset())
+						break;
+
+					parent++;
+					m = m->d.superdata;
+				}
+
+				int local_index = method_index - m->methodOffset();
+				out <<parent;
+				out << local_index;
+
 				QMetaMethod member = mo->method(method_index);
 				QList<QByteArray> args = member.parameterTypes();
 				out << args.size();
 				
 				for (int i = 0; i < args.count(); ++i) {
+					//Check if type is star type
+					//Deep copy is needed
 					const QByteArray &arg = args.at(i);
 					int typeId = QMetaType::type(args.at(i).constData());
 					QVariant argvar(typeId, argv[i + 1]);
-					out << argvar;
+					//out << argvar;
 					/*if (arg.endsWith('*') || arg.endsWith('&')) 
 					{
 
@@ -130,6 +149,7 @@ bool QMetaHost::registerObject(const QString& name, QObject *object)
 
     ObjectMeta objectMeta;
     objectMeta.object = object;
+	objectMeta.remote = false;
 
     while(meta)
     {
@@ -227,6 +247,7 @@ void QMetaHost::processCommand(QIODevice *client, QByteArray *data)
 					metas.append(*cl);
 				}
 				objMeta.object = new QProxyObject(metas);
+				objMeta.remote = true;
 			}
 
 			emit gotObjectInfo();
@@ -271,7 +292,34 @@ void QMetaHost::processCommand(QIODevice *client, QByteArray *data)
 		}
 		return;
     case CallMetaMethod:
-        break;
+        return;
+	case EmitSignal:
+		{
+			QString objName;
+			in >> objName;
+
+			int parents;
+			in >> parents;
+
+			int method_index;
+			in >> method_index;
+
+			int numArgs;
+			in >> numArgs;
+
+			auto o = _objects.find(objName);
+			if(o == _objects.end())
+				return;
+
+			ObjectMeta meta = (*o);
+			const QMetaObject *metaObject = meta.object->metaObject();
+			for(int i = 0; i < parents; ++i) {
+				metaObject = metaObject->d.superdata;
+			}
+
+			QMetaObject::activate((*o).object, metaObject, method_index, 0);
+		}
+		return;
     default:
         return;
     }
@@ -439,7 +487,8 @@ QObject *QMetaHost::getObject(const QString& name)
 	{
 		if((*o).fullQuilified)
 			return (*o).object;
-	}
+	} else
+		return nullptr;
 
 	ObjectMeta ometa = (*o);
 	foreach(const QString& clsName, ometa.classInfo)
@@ -469,6 +518,14 @@ QObject *QMetaHost::getObject(const QString& name)
 		}
 	}
 
+	QList<ClassMeta> metas;
+	foreach(const QString& clname, (*o).classInfo)
+	{
+		auto cl = _classes.find(clname);
+		metas.append(*cl);
+	}
+	(*o).object = new QProxyObject(metas);
+	(*o).remote = true;
 	(*o).fullQuilified = true;
 
 	return (*o).object;

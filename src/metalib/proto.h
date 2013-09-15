@@ -22,6 +22,7 @@ struct ObjectMeta
 	bool fullQuilified;
 	QObject *object;
 	QStringList classInfo;
+	bool remote;
 };
 
 QDataStream &operator<<(QDataStream &out, const ObjectMeta &objMeta);

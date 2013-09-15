@@ -6,6 +6,7 @@
 #include "proto.h"
 
 class QMetaHost;
+struct QMetaObject;
 
 class QProxyObject : public QObject
 {
@@ -22,7 +23,7 @@ private:
     QProxyObject(const QList<ClassMeta>& metas, QObject *parent = 0);
 
 private:
-	QList<ClassMeta> _metas;
+	QList<QMetaObject *> _metas;
     
 };
 
