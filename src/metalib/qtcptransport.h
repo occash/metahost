@@ -16,12 +16,17 @@ class METAEXPORT QTcpTransport : public QObject
     Q_OBJECT
 
 public:
-    QTcpTransport(const QHostAddress& address, quint32 port, QObject *parent = 0);
+    QTcpTransport(QTcpServer *server, QObject *parent = 0);
+	QTcpTransport(QTcpSocket *client, QObject *parent = 0);
     ~QTcpTransport();
 
     void broadcast(const QByteArray& data);
     //Replace raw pointer with some ID
     void write(QIODevice *client, const QByteArray& data);
+
+private:
+	void _addClient(QTcpSocket *client);
+	void _removeClient(QTcpSocket *client);
 
 private slots:
     void handleConnection();
@@ -32,6 +37,7 @@ private slots:
 private:
     typedef QList<QIODevice *> ClientList;
     QTcpServer *_server;
+	QTcpSocket *_peer;
     ClientList _clients;
     
 };

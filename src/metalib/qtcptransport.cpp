@@ -7,34 +7,33 @@
 #include <QByteArray>
 #include <QDataStream>
 
-QTcpTransport::QTcpTransport(const QHostAddress& address, quint32 port, QObject *parent) :
+QTcpTransport::QTcpTransport(QTcpServer *server, QObject *parent) :
     QObject(parent),
-    _server(new QTcpServer(this))
+    _server(server),
+	_peer(nullptr)
 {
     connect(_server, SIGNAL(newConnection()), this, SLOT(handleConnection()));
+}
 
-    qDebug() << "Starting tcp server...";
-    if(_server->listen(address, port))
-        qDebug() << "Server started.";
-    else
-        qCritical() << "Server have not been started.";
+QTcpTransport::QTcpTransport(QTcpSocket *client, QObject *parent) :
+QObject(parent),
+	_server(nullptr),
+	_peer(client)
+{
+	_addClient(client);
 }
 
 QTcpTransport::~QTcpTransport()
 {
-    _server->close();
+	if(_server)
+		_server->close();
     qDeleteAll(_clients);
     qDebug() << "Server stopped.";
 }
 
 void QTcpTransport::broadcast(const QByteArray &data)
 {
-    QByteArray dataToSend;
-    QDataStream out(&dataToSend, QIODevice::WriteOnly);
-    out.setVersion(QDataStream::Qt_4_8);
-
-    out << dataToSend.size();
-    out << data;
+    QByteArray dataToSend = pack(data);
 
     foreach(QIODevice *client, _clients)
     {
@@ -55,12 +54,7 @@ void QTcpTransport::handleConnection()
     while(_server->hasPendingConnections()) {
         QTcpSocket *client = _server->nextPendingConnection();
 
-        //***********Extract AddClient() method**********************
-        connect(client, SIGNAL(disconnected()), this, SLOT(handleDisconnection()));
-        connect(client, SIGNAL(readyRead()), this, SLOT(dispatch()));
-        _clients.append(client);
-        qDebug() << "New client arrived:" << client->peerAddress();
-        //**************************************************
+        _addClient(client);
     }
 }
 
@@ -70,11 +64,7 @@ void QTcpTransport::handleDisconnection()
     if(!client)
         return;
 
-    //**********Extract removeClient() method*****************
-    _clients.removeAll(client);
-    client->deleteLater();
-    qDebug() << "Client disconnected:" << client->peerAddress();
-    //******************************************************
+    _removeClient(client);
 }
 
 void QTcpTransport::dispatch()
@@ -121,5 +111,20 @@ QByteArray QTcpTransport::pack( const QByteArray& data )
     out << (quint16)(packet.size() - sizeof(quint16));
 
     return packet;
+}
+
+void QTcpTransport::_addClient(QTcpSocket *client)
+{
+	connect(client, SIGNAL(disconnected()), this, SLOT(handleDisconnection()));
+	connect(client, SIGNAL(readyRead()), this, SLOT(dispatch()));
+	_clients.append(client);
+	qDebug() << "New client arrived:" << client->peerAddress();
+}
+
+void QTcpTransport::_removeClient(QTcpSocket *client)
+{
+    _clients.removeAll(client);
+    client->deleteLater();
+    qDebug() << "Client disconnected:" << client->peerAddress();
 }
 
