@@ -33,7 +33,7 @@ public:
 	Q_INVOKABLE void test() { qDebug() << "Test invoked"; }
 
 public slots:
-	void slot1() { qDebug() << "slot1 invoked"; }
+	void slot1() { qDebug() << "slot1 invoked"; emit signal1(); emit signal3(5);}
 	void slot2(const QString&) { qDebug() << "slot2 invoked"; }
 	void slot3(int) { qDebug() << "slot3 invoked"; }
 

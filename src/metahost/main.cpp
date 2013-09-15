@@ -1,6 +1,7 @@
 #include <QtCore/QCoreApplication>
 #include <QtCore/QMetaobject>
 #include <QtCore/QDebug>
+#include <QtNetwork/QTcpServer>
 
 /*void remoteCall(QObject *_o, QMetaObject::Call _c, int _id, void **_arg);
 
@@ -61,16 +62,16 @@ int main(int argc, char *argv[])
 {
 	QCoreApplication a(argc, argv);
 
-	MocTest mtest;
-	MocTest mtest2;
-
-    QMetaObject::invokeMethod(&mtest, "slot1");
-	QObject::connect(&mtest, SIGNAL(stringChanged()), &mtest2, SLOT(slot1()));
-	mtest.setString("LOLO");
-
-    QTcpTransport transport(QHostAddress::Any, 6565);
+	//Create host
+	QTcpServer server;
+	server.listen(QHostAddress::Any, 6565);
+    QTcpTransport transport(&server);
     QMetaHost host(&transport);
+
+	//Create and register object
+	MocTest mtest;
     host.registerObject("MocTest1", &mtest);
+	mtest.slot1();
 
 	return a.exec();
 }
