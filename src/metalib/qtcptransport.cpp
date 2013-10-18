@@ -39,6 +39,8 @@ void QTcpTransport::broadcast(const QByteArray &data)
     {
         client->write(dataToSend);
     }
+
+    qDebug() << "Sent:" << dataToSend;
 }
 
 void QTcpTransport::write(QIODevice *client, const QByteArray &data)
@@ -47,6 +49,8 @@ void QTcpTransport::write(QIODevice *client, const QByteArray &data)
     QByteArray dataToSend = pack(data);
 
     client->write(dataToSend);
+
+    qDebug() << "Sent:" << dataToSend;
 }
 
 void QTcpTransport::handleConnection()
@@ -73,31 +77,37 @@ void QTcpTransport::dispatch()
     if(!client)
         return;
 
-    QDataStream in(client);
-    in.setVersion(QDataStream::Qt_4_8);
 
-    quint16 size = 0;
-    in >> size;
-    qDebug() << "Bytes available" << client->bytesAvailable();
-    qDebug() << "Data expected:" << size;
-
-    if(client->bytesAvailable() < size)
+    while(client->bytesAvailable())
     {
-        //Make appropriate logging
-        qDebug() << "Error: Number of bytes manipulated!";
-        return;
+        QDataStream in(client);
+        in.setVersion(QDataStream::Qt_4_8);
+
+        quint16 size = 0;
+        in >> size;
+        qDebug() << "Bytes available" << client->bytesAvailable();
+        qDebug() << "Data expected:" << size;
+
+        if(client->bytesAvailable() < size)
+        {
+            //Make appropriate logging
+            qDebug() << "Error: Number of bytes manipulated!";
+            return;
+        }
+
+        QByteArray data;
+        in >> data;
+        qDebug() << "Data received:" << data;
+        qDebug() << data.size();
+
+        qDebug() << "Received:" << data;
+
+        QMetaHost *host = qobject_cast<QMetaHost *>(parent());
+        if(!host)
+            return;
+
+        host->processCommand(client, &data);
     }
-
-    QByteArray data;
-    in >> data;
-    qDebug() << "Data received:" << data;
-    qDebug() << data.size();
-
-    QMetaHost *host = qobject_cast<QMetaHost *>(parent());
-    if(!host)
-        return;
-
-    host->processCommand(client, &data);
 }
 
 QByteArray QTcpTransport::pack( const QByteArray& data )
