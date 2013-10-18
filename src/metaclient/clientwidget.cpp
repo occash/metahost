@@ -31,8 +31,9 @@ void ClientWidget::onConnectClicked()
 	QHostAddress address(ipAddress->text());
 	client = new QTcpSocket(this);
 	client->connectToHost(address, 6565, QIODevice::ReadWrite);
-	transport = new QTcpTransport(client);
-	host = new QMetaHost(transport);
+	
+	host = new QMetaHost();
+    transport = new QTcpTransport(host, client);
 
 	serverObj = host->getObject("ServerButton");
 	connect(serverObj, SIGNAL(clicked()), this, SLOT(onServerButtonClicked()));

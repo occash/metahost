@@ -37,7 +37,7 @@ void QMetaHost::hostBeginCallback(QObject *caller, int method_index, void **argv
 	if(!_hosts)
 		return;
 
-	std::cout << "Exploited by occash!" << std::endl;
+	//std::cout << "Exploited by occash!" << std::endl;
 
 	/*for(int i = 0; i < _hosts.size(); ++i)
 	{
@@ -94,7 +94,7 @@ void QMetaHost::hostBeginCallback(QObject *caller, int method_index, void **argv
 					}*/
 				}
 
-				_hosts->_transport->broadcast(answer);
+				//_hosts->_transport->broadcast(answer);
 			}
 		}
 	//}
@@ -126,13 +126,11 @@ bool QMetaHost::_initSpy = QMetaHost::initSignalSpy();
 
 //**************************************Meta host*********************************
 
-QMetaHost::QMetaHost(QTcpTransport *transport, QObject *parent)
-    : QObject(parent),
-    _transport(transport)
+QMetaHost::QMetaHost(QObject *parent)
+    : QObject(parent)
 {
 	//_hosts.append(this);
 	_hosts = this;
-    transport->setParent(this);
 }
 
 QMetaHost::~QMetaHost()
@@ -140,16 +138,12 @@ QMetaHost::~QMetaHost()
 	//_hosts.takeAt(_hosts.indexOf(this));
 }
 
-bool QMetaHost::registerObject(const QString& name, QObject *object)
+bool QMetaHost::registerObject(QObject *object)
 {
     bool result = true;
     const QMetaObject *meta = object->metaObject();
     if(!meta)
         return false;
-
-    ObjectMeta objectMeta;
-    objectMeta.object = object;
-	objectMeta.remote = false;
 
     while(meta)
     {
@@ -174,83 +168,125 @@ bool QMetaHost::registerObject(const QString& name, QObject *object)
             metaDataSize 
         };
         _classes.insert(className, classMeta);
-        objectMeta.classInfo.append(className);
 
         meta = meta->d.superdata;
     }
 
-    _objects.insert(name, objectMeta);
+    static quint32 _id = 1;
+    _localObjects.insert(_id++, object);
 
     return result;
 }
 
-void QMetaHost::processCommand(QIODevice *client, QByteArray *data)
+void QMetaHost::processQueryObjectInfo(char *data, char **answer, int *answerSize)
 {
-    QDataStream in(data, QIODevice::ReadOnly);
-    in.setVersion(QDataStream::Qt_4_8);
-    quint32 rawCommand = 0x00;
-    in >> rawCommand;
-    Command command = static_cast<Command>(rawCommand);
+    QString objName = data;
+    qDebug() << "Query object info:" << objName;
 
-    QByteArray answer;
-    QDataStream out(&answer, QIODevice::ReadWrite);
+    //Locate the desired objects
+    QObject *destObject = nullptr;
+    quint32 destId = 0;
+    auto i = _localObjects.begin();
+    for(; i != _localObjects.end(); ++i)
+    {
+        if((*i)->objectName() == objName) {
+            destObject = *i;
+            break;
+        }
+    }
+
+    //Compute size of packet required
+    //minimal size of header
+    int destSize = sizeof(quint8) + sizeof(quint32) + 1; 
+    quint8 type = ReturnObjectInfo;
+    if(destObject)
+    {
+        QMetaObject *meta = const_cast<QMetaObject *>(
+            destObject->metaObject());
+        while(meta)
+        {
+            destSize += strlen(meta->d.stringdata) + 1;
+            meta = const_cast<QMetaObject *>(meta->d.superdata);
+        }
+    }
+
+    //Allocate memory for answer
+    *answer = new char[destSize];
+    char *ptr = *answer;
+
+    //Set header type
+    *((quint8 *)ptr) = type;
+    ptr += sizeof(quint8);
+    //Set generated object id
+    *((quint32 *)ptr) = destId;
+    ptr += sizeof(quint32);
+    //Set class names related to object
+    if(destObject)
+    {
+        QMetaObject *meta = const_cast<QMetaObject *>(
+            destObject->metaObject());
+        while(meta)
+        {
+            int len = strlen(meta->d.stringdata) + 1;
+            memcpy(ptr, meta->d.stringdata, len);
+            ptr += len;
+            meta = const_cast<QMetaObject *>(meta->d.superdata);
+        }
+    }
+    //Add terminating zero
+    *ptr = '\0';
+
+    *answerSize = destSize;
+}
+
+void QMetaHost::processReturnObjectInfo(char *data)
+{
+    ObjectMeta objectMeta;
+    objectMeta.id = *((quint32 *)data);
+    objectMeta.qualified = true;
+
+    data += sizeof(quint8);
+    if(objectMeta.id) 
+    {
+        QString className(data);
+        auto i = _classes.find(className);
+        if(i == _classes.end())
+            objectMeta.qualified = false;
+
+        objectMeta.classes << className;
+        data += className.size() + 1;
+    }
+
+    if(objectMeta.qualified)
+    {
+        QList<ClassMeta> metas;
+        foreach(const QString& clname, objectMeta.classes)
+        {
+            auto cl = _classes.find(clname);
+            metas.append(*cl);
+        }
+        /*objMeta.object = new QProxyObject(metas);
+        objMeta.remote = true;*/
+    }
+
+    emit gotObjectInfo();
+}
+
+void QMetaHost::processCommand(char *data, int size)
+{
+    quint8 command = *((quint8 *)data);
+    data += sizeof(quint8);
+    char *answer = nullptr;
+    int answerSize = 0;
 
     switch(command)
     {
     case QueryObjectInfo:
-		{
-			QString objName;
-			in >> objName;
-			qDebug() << "Query object info:" << objName;
-
-			out << ReturnObjectInfo;
-			ObjectMap::iterator i = _objects.find(objName);
-			if(i != _objects.end())
-			{
-				out << quint8(SERVER_OK);
-				out << objName;
-				out << *i;
-			}
-			else
-			{
-				out << quint8(SERVER_BAD);
-			}
-		}
+		processQueryObjectInfo(data, &answer, &answerSize);
         break;
 	case ReturnObjectInfo:
 		{
-			quint8 serverOk = 0;
-			in >> serverOk;
-			if(!serverOk)
-				return;
-
-			QString objName;
-			in >> objName;
-			ObjectMeta objMeta;
-			in >> objMeta;
-
-			bool quilified = true;
-			foreach(QString clname, objMeta.classInfo)
-			{
-				auto cl = _classes.find(clname);
-				quilified = cl != _classes.end();
-			}
-			objMeta.fullQuilified = quilified;
-			_objects.insert(objName, objMeta);
-
-			if(quilified)
-			{
-				QList<ClassMeta> metas;
-				foreach(const QString& clname, objMeta.classInfo)
-				{
-					auto cl = _classes.find(clname);
-					metas.append(*cl);
-				}
-				objMeta.object = new QProxyObject(metas);
-				objMeta.remote = true;
-			}
-
-			emit gotObjectInfo();
+			
 		}
 		return;
     case QueryClassInfo:
@@ -324,7 +360,7 @@ void QMetaHost::processCommand(QIODevice *client, QByteArray *data)
         return;
     }
 
-    _transport->write(client, answer);
+//    _transport->write(client, answer);
 }
 
 bool QMetaHost::checkRevision(const QMetaObject *meta)
@@ -473,7 +509,7 @@ QObject *QMetaHost::getObject(const QString& name)
 	outData << QueryObjectInfo;
 	outData << name;
 
-	_transport->broadcast(data);
+//	_transport->broadcast(data);
 	
 	QEventLoop loop;
 	QTimer timer;
@@ -503,7 +539,7 @@ QObject *QMetaHost::getObject(const QString& name)
 			outData << QueryClassInfo;
 			outData << clsName;
 
-			_transport->broadcast(data);
+//			_transport->broadcast(data);
 
 			QEventLoop loop;
 			QTimer timer;

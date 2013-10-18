@@ -10,19 +10,17 @@ class QTcpServer;
 class QTcpSocket;
 class QHostAddress;
 class QIODevice;
+class QMetaClient;
+class QMetaHost;
 
 class METAEXPORT QTcpTransport : public QObject
 {
     Q_OBJECT
 
 public:
-    QTcpTransport(QTcpServer *server, QObject *parent = 0);
-	QTcpTransport(QTcpSocket *client, QObject *parent = 0);
+    QTcpTransport(QMetaHost *host, QTcpServer *server, QObject *parent = 0);
+	QTcpTransport(QMetaHost *host, QTcpSocket *client, QObject *parent = 0);
     ~QTcpTransport();
-
-    void broadcast(const QByteArray& data);
-    //Replace raw pointer with some ID
-    void write(QIODevice *client, const QByteArray& data);
 
 private:
 	void _addClient(QTcpSocket *client);
@@ -31,11 +29,10 @@ private:
 private slots:
     void handleConnection();
     void handleDisconnection();
-    void dispatch();
-    QByteArray pack(const QByteArray& data);
     
 private:
-    typedef QList<QIODevice *> ClientList;
+    QMetaHost *_host;
+    typedef QList<QMetaClient *> ClientList;
     QTcpServer *_server;
 	QTcpSocket *_peer;
     ClientList _clients;

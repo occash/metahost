@@ -9,23 +9,24 @@
 
 struct ClassMeta
 {
-	QMetaObject *metaObject;
-	quint32 dataSize;
-	quint32 stringSize;
+    QMetaObject *metaObject;
+    quint32 dataSize;
+    quint32 stringSize;
 };
-
-QDataStream &operator<<(QDataStream &out, const ClassMeta &classMeta);
-QDataStream &operator>>(QDataStream &in, ClassMeta &classMeta);
 
 struct ObjectMeta
 {
-	bool fullQuilified;
-	QObject *object;
-	QStringList classInfo;
-	bool remote;
+    quint32 id;
+	bool qualified;
+    QStringList classes;
 };
 
-QDataStream &operator<<(QDataStream &out, const ObjectMeta &objMeta);
-QDataStream &operator>>(QDataStream &in, ObjectMeta &objMeta);
+#define QueryObjectInfo 0x01
+#define ReturnObjectInfo 0x02
+#define QueryClassInfo 0x03
+#define ReturnClassInfo 0x04
+#define CallMetaMethod 0x05
+#define ReturnMetaMethod 0x06
+#define EmitSignal 0x07
 
 #endif // PROTO_H

@@ -11,16 +11,18 @@ ServertWidget::ServertWidget()
 {
 	QVBoxLayout *layout = new QVBoxLayout(this);
 	button = new QPushButton("Click", this);
+    button->setObjectName("ServerButton");
 	layout->addWidget(button);
 	setLayout(layout);
 
 	//Create host
 	server = new QTcpServer(this);
 	server->listen(QHostAddress::Any, 6565);
-	transport = new QTcpTransport(server);
-	host = new QMetaHost(transport);
+	
+	host = new QMetaHost();
+    transport = new QTcpTransport(host, server);
 
-	host->registerObject("ServerButton", button);
+	host->registerObject(button);
 }
 
 ServertWidget::~ServertWidget()
