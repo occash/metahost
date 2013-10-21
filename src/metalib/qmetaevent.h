@@ -4,6 +4,8 @@
 #include "enums.h"
 #include <QEvent>
 
+extern int MetaEventType;
+
 class QMetaEvent : public QEvent
 {
 public:

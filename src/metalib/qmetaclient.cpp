@@ -14,7 +14,7 @@ QMetaClient::QMetaClient(QMetaHost *host, QObject *parent) :
 
 bool QMetaClient::event(QEvent *e)
 {
-    if(e->type() == RpcEvent::Input)
+    if(e->type() == MetaEventType)
     {
         QMetaEvent *me = static_cast<QMetaEvent *>(e);
 
@@ -40,6 +40,7 @@ void QMetaClient::onReadyRead()
         if(_client->read(input, sizeof(quint16)) == -1)
             break;
 
+        int bytes = _client->bytesAvailable();
         if(!packetSize || packetSize > _client->bytesAvailable())
             return;
 

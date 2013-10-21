@@ -23,6 +23,9 @@ public:
     bool registerObject(QObject *);
     QObject *getObject(const QString& name);
 
+protected:
+    bool event(QEvent *e);
+
 private:
 	void processCommand(char *data, int size);
     bool checkRevision(const QMetaObject *);

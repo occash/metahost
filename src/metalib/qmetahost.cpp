@@ -1,6 +1,7 @@
 #include "qmetahost.h"
 #include "qtcptransport.h"
 #include "qproxyobject.h"
+#include "qmetaevent.h"
 
 #include <QMetaObject>
 #include <QDebug>
@@ -34,77 +35,56 @@ extern void Q_CORE_EXPORT qt_register_signal_spy_callbacks(const QSignalSpyCallb
 
 void QMetaHost::hostBeginCallback(QObject *caller, int method_index, void **argv)
 {
-	if(!_hosts)
+	/*if(!_hosts)
 		return;
 
-	//std::cout << "Exploited by occash!" << std::endl;
-
-	/*for(int i = 0; i < _hosts.size(); ++i)
-	{
-		QMetaHost *host = _hosts.at(i);*/
 	QMetaHost *host = _hosts;
 
-		foreach(QString e, host->_objects.keys())
-		{
-			if(host->_objects.value(e).object == caller)
-			{
-				if(host->_objects.value(e).remote)
-					return;
-
-				std::cout << "Object found" << std::endl;
-				QByteArray answer;
-				QDataStream out(&answer, QIODevice::ReadWrite);
-				out << EmitSignal;
-				out << e;
-
-				const QMetaObject *mo = caller->metaObject();
-
-				int parent = 0;
-				const QMetaObject *m = mo;
-				while (m) {
-					if(method_index >= m->methodOffset())
-						break;
-
-					parent++;
-					m = m->d.superdata;
-				}
-
-				int local_index = method_index - m->methodOffset();
-				out <<parent;
-				out << local_index;
-
-				QMetaMethod member = mo->method(method_index);
-				QList<QByteArray> args = member.parameterTypes();
-				out << args.size();
-				
-				for (int i = 0; i < args.count(); ++i) {
-					//Check if type is star type
-					//Deep copy is needed
-					const QByteArray &arg = args.at(i);
-					int typeId = QMetaType::type(args.at(i).constData());
-					QVariant argvar(typeId, argv[i + 1]);
-					//out << argvar;
-					/*if (arg.endsWith('*') || arg.endsWith('&')) 
-					{
-
-					} 
-					else if (typeId != QMetaType::Void) 
-					{
-
-					}*/
-				}
-
-				//_hosts->_transport->broadcast(answer);
-			}
-		}
-	//}
-	
-	/*QObjectMap::iterator _caller = host->_registered.begin();
-	for(;_caller != host->_registered.end(); ++_caller) 
+	foreach(QString e, host->_objects.keys())
 	{
-		if(*_caller == caller)
+		if(host->_objects.value(e).object == caller)
 		{
+			if(host->_objects.value(e).remote)
+				return;
 
+			std::cout << "Object found" << std::endl;
+			QByteArray answer;
+			QDataStream out(&answer, QIODevice::ReadWrite);
+			out << EmitSignal;
+			out << e;
+
+			const QMetaObject *mo = caller->metaObject();
+
+			int parent = 0;
+			const QMetaObject *m = mo;
+			while (m) {
+				if(method_index >= m->methodOffset())
+					break;
+
+				parent++;
+				m = m->d.superdata;
+			}
+
+			int local_index = method_index - m->methodOffset();
+			out <<parent;
+			out << local_index;
+
+			QMetaMethod member = mo->method(method_index);
+			QList<QByteArray> args = member.parameterTypes();
+			out << args.size();
+				
+			for (int i = 0; i < args.count(); ++i) {
+				//Check if type is star type
+				//Deep copy is needed
+				const QByteArray &arg = args.at(i);
+				int typeId = QMetaType::type(args.at(i).constData());
+				QVariant argvar(typeId, argv[i + 1]);
+				//if (arg.endsWith('*') || arg.endsWith('&')) 
+				//{
+				//} 
+			}
+
+			//_hosts->_transport->broadcast(answer);
 		}
 	}*/
 }
@@ -291,7 +271,7 @@ void QMetaHost::processCommand(char *data, int size)
 		return;
     case QueryClassInfo:
 		{
-			QString clsName;
+			/*QString clsName;
 			in >> clsName;
 			qDebug() << "Query class info:" << clsName;
 
@@ -306,12 +286,12 @@ void QMetaHost::processCommand(char *data, int size)
 			else
 			{
 				out << quint8(SERVER_BAD);
-			}
+			}*/
 		}
         break;
 	case ReturnClassInfo:
 		{
-			quint8 serverOk = 0;
+			/*quint8 serverOk = 0;
 			in >> serverOk;
 			if(!serverOk)
 				return;
@@ -324,14 +304,14 @@ void QMetaHost::processCommand(char *data, int size)
 
 			_classes.insert(clsName, clsMeta);
 
-			emit gotClassInfo();
+			emit gotClassInfo();*/
 		}
 		return;
     case CallMetaMethod:
         return;
 	case EmitSignal:
 		{
-			QString objName;
+			/*QString objName;
 			in >> objName;
 
 			int parents;
@@ -353,7 +333,7 @@ void QMetaHost::processCommand(char *data, int size)
 				metaObject = metaObject->d.superdata;
 			}
 
-			QMetaObject::activate((*o).object, metaObject, method_index, 0);
+			QMetaObject::activate((*o).object, metaObject, method_index, 0);*/
 		}
 		return;
     default:
@@ -361,6 +341,19 @@ void QMetaHost::processCommand(char *data, int size)
     }
 
 //    _transport->write(client, answer);
+}
+
+bool QMetaHost::event(QEvent *e)
+{
+    if(e->type() == MetaEventType)
+    {
+        QMetaEvent *me = dynamic_cast<QMetaEvent *>(e);
+        if(me)
+            processCommand(me->data(), me->size());
+
+        return true;
+    }
+    return false;
 }
 
 bool QMetaHost::checkRevision(const QMetaObject *meta)
@@ -498,7 +491,7 @@ int QMetaHost::computeMetaDataSize(const QMetaObject *meta)
 
 QObject *QMetaHost::getObject(const QString& name)
 {
-	ObjectMap::iterator i = _objects.find(name);
+/*	ObjectMap::iterator i = _objects.find(name);
 	if(i != _objects.end())
 		return (*i).object;
 
@@ -564,5 +557,6 @@ QObject *QMetaHost::getObject(const QString& name)
 	(*o).remote = true;
 	(*o).fullQuilified = true;
 
-	return (*o).object;
+	return (*o).object;*/
+    return 0;
 }
