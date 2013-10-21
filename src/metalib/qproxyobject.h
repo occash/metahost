@@ -20,10 +20,10 @@ public:
 
 private:
 	friend class QMetaHost;
-    QProxyObject(const QList<ClassMeta>& metas, QObject *parent = 0);
+    QProxyObject(QMetaObject *meta, QObject *parent = 0);
 
 private:
-	QList<QMetaObject *> _metas;
+	QMetaObject *_meta;
     
 };
 

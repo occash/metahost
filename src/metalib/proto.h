@@ -10,8 +10,8 @@
 struct ClassMeta
 {
     QMetaObject *metaObject;
-    quint32 dataSize;
-    quint32 stringSize;
+    quint16 dataSize;
+    quint16 stringSize;
 };
 
 struct ObjectMeta

@@ -2,39 +2,33 @@
 #include "qmetahost.h"
 
 #include <QDebug>
+#include <QMetaObject>
 
-QProxyObject::QProxyObject(const QList<ClassMeta>& metas, QObject *parent) :
-    QObject(parent)
+QProxyObject::QProxyObject(QMetaObject *meta, QObject *parent) :
+    QObject(parent),
+    _meta(meta)
 {
-	foreach(const ClassMeta& meta, metas)
-	{
-		_metas.append(meta.metaObject);
-		if(_metas.size() > 1)
-		{
-			QMetaObject *lastObj = _metas.at(_metas.size() - 1);
-			QMetaObject *prevObj = _metas.at(_metas.size() - 2);
-			prevObj->d.superdata = lastObj;
-			prevObj->d.extradata = nullptr;
-		}
-	}
-	QMetaObject *lastObj = _metas.at(_metas.size() - 1);
-	lastObj->d.superdata = nullptr;
 }
 
 const QMetaObject *QProxyObject::metaObject() const
 {
-	return _metas.first();
+	return _meta;
 }
 
 void *QProxyObject::qt_metacast(const char *_clname)
 {
-	if (!_clname) return 0;
-	foreach(QMetaObject *meta, _metas)
-	{
-		if (!strcmp(_clname, meta->d.stringdata))
-			return reinterpret_cast<void *>(this);
-	}
-	return QObject::qt_metacast(_clname);
+    if (!_clname) return 0;
+
+    const QMetaObject *meta = _meta;
+    while(meta)
+    {
+        if (!strcmp(_clname, meta->d.stringdata))
+            return static_cast<void *>(const_cast<QProxyObject *>(this));
+
+        meta = meta->d.superdata;
+    }
+    
+    return QObject::qt_metacast(_clname);
 }
 
 int QProxyObject::qt_metacall(QMetaObject::Call _c, int _id, void **_a)

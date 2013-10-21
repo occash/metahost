@@ -27,11 +27,11 @@ protected:
     bool event(QEvent *e);
 
 private:
-	void processCommand(char *data, int size);
+	void processCommand(char *data);
     bool checkRevision(const QMetaObject *);
     QString metaName(const QMetaObject *);
-    int computeMetaStringSize(const QMetaObject *);
-    int computeMetaDataSize(const QMetaObject *);
+    quint16 computeMetaStringSize(const QMetaObject *);
+    quint16 computeMetaDataSize(const QMetaObject *);
 
 	static void hostBeginCallback(QObject *caller, int method_index, void **argv);
 	static bool initSignalSpy();
@@ -44,17 +44,18 @@ private:
     RemoteObjectMap _objects;
     ClassMap _classes;
 
-	//static QList<QMetaHost *> _hosts;
-	static QMetaHost * _hosts;
+	static QMetaHost * _host;
 	static bool _initSpy;
 
 signals:
-	void gotObjectInfo();
-	void gotClassInfo();
+	void gotObjectInfo(ObjectMeta);
+	void gotClassInfo(ClassMeta);
 
 private:
-    void processQueryObjectInfo(char *data, char **answer, int *answerSize);
-    void processReturnObjectInfo(char *data);
+    void processQueryObjectInfo(char *data, char **answer);
+    void processReturnObjectInfo(char *data, char **answer);
+    void processQueryClassInfo(char *data, char **answer);
+    void processReturnClassInfo(char *data, char **answer);
 };
 
 #endif // QMETAHOST_H
