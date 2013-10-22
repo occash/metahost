@@ -19,10 +19,8 @@ bool QMetaClient::event(QEvent *e)
         QMetaEvent *me = static_cast<QMetaEvent *>(e);
 
         if(_client) {
-            quint16 packetSize = me->size();
-            _client->write(reinterpret_cast<char *>(&packetSize),
-                sizeof(quint16));
-            _client->write(me->data(), me->size());
+            quint16 packetSize = *((quint16 *)me->data());
+            _client->write(me->data(), packetSize + sizeof(quint16));
         }
 
         return true;
@@ -40,15 +38,14 @@ void QMetaClient::onReadyRead()
         if(_client->read(input, sizeof(quint16)) == -1)
             break;
 
-        int bytes = _client->bytesAvailable();
+        //TODO: read partially
         if(!packetSize || packetSize > _client->bytesAvailable())
             return;
 
         char *data = new char[packetSize];
         if(_client->read(data, packetSize) == packetSize)
         {
-            QMetaEvent *event = new QMetaEvent(
-                data, packetSize);
+            QMetaEvent *event = new QMetaEvent(this, data);
             QCoreApplication::postEvent(_host, event, Qt::HighEventPriority);
         }
     }
@@ -60,16 +57,3 @@ void QMetaClient::setDevice(QIODevice *d)
     _client->setParent(this);
     connect(_client, SIGNAL(readyRead()), this, SLOT(onReadyRead()));
 }
-
-/*QByteArray QMetaClient::pack(const QByteArray& data)
-{
-    QByteArray packet;
-    QDataStream out(&packet, QIODevice::WriteOnly);
-    out.setVersion(QDataStream::Qt_4_8);
-    out << quint16(0);
-    out << data;
-    out.device()->seek(0);
-    out << (quint16)(packet.size() - sizeof(quint16));
-
-    return packet;
-}*/

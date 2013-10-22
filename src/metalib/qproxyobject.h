@@ -20,7 +20,8 @@ public:
 
 private:
 	friend class QMetaHost;
-    QProxyObject(QMetaObject *meta, QObject *parent = 0);
+    QProxyObject(QObject *parent = 0);
+    void setMetaObject(QMetaObject *meta);
 
 private:
 	QMetaObject *_meta;

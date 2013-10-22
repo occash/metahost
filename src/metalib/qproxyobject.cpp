@@ -4,9 +4,9 @@
 #include <QDebug>
 #include <QMetaObject>
 
-QProxyObject::QProxyObject(QMetaObject *meta, QObject *parent) :
+QProxyObject::QProxyObject(QObject *parent) :
     QObject(parent),
-    _meta(meta)
+    _meta(nullptr)
 {
 }
 
@@ -35,5 +35,10 @@ int QProxyObject::qt_metacall(QMetaObject::Call _c, int _id, void **_a)
 {
 	qDebug() << _c << _id;
 	return _id;
+}
+
+void QProxyObject::setMetaObject(QMetaObject *meta)
+{
+    _meta = meta;
 }
 

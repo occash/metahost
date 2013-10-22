@@ -21,41 +21,53 @@ public:
     ~QMetaHost();
 
     bool registerObject(QObject *);
-    QObject *getObject(const QString& name);
+    QObject *getObject(const QString& name, QObject *client);
 
 protected:
     bool event(QEvent *e);
 
 private:
-	void processCommand(char *data);
+	void processCommand(QObject *client, char *data);
     bool checkRevision(const QMetaObject *);
     QString metaName(const QMetaObject *);
     quint16 computeMetaStringSize(const QMetaObject *);
     quint16 computeMetaDataSize(const QMetaObject *);
+    QObject *findObjectByName(const QString& name);
 
-	static void hostBeginCallback(QObject *caller, int method_index, void **argv);
+    static void hostCallback(QObject *caller, int method_index, void **argv);
+    static void signalCallback(QObject *caller, int method_index, void **argv);
+    static void slotCallback(QObject *caller, int method_index, void **argv);
 	static bool initSignalSpy();
 
 private:
-    typedef QMap<quint32, QObject *> LocalObjectMap;
+    typedef QMap<QObject *, QObjectList *> LocalObjectMap;
     typedef QMap<QObject *, ObjectMeta> RemoteObjectMap;
+    typedef QMap<quint32, QObject *> RemoteHelperMap;
     typedef QMap<QString, ClassMeta> ClassMap;
+
     LocalObjectMap _localObjects;
-    RemoteObjectMap _objects;
+    RemoteObjectMap _remoteObjects;
+    RemoteHelperMap _remoteIds;
     ClassMap _classes;
 
 	static QMetaHost * _host;
 	static bool _initSpy;
 
 signals:
-	void gotObjectInfo(ObjectMeta);
-	void gotClassInfo(ClassMeta);
+	void gotObjectInfo();
+	void gotClassInfo();
 
 private:
-    void processQueryObjectInfo(char *data, char **answer);
-    void processReturnObjectInfo(char *data, char **answer);
-    void processQueryClassInfo(char *data, char **answer);
-    void processReturnClassInfo(char *data, char **answer);
+    void prepareQuery(char *data, char **answer, quint8 ctype);
+    void makeQuery(QObject *client, const QString& name, quint8 ctype);
+    void constructObject(QObject *object, const QStringList& classes);
+    //Processing stuff
+    void processQueryObjectInfo(QObject *client, char *data, char **answer);
+    void processReturnObjectInfo(QObject *client, char *data, char **answer);
+    void processQueryClassInfo(QObject *client, char *data, char **answer);
+    void processReturnClassInfo(QObject *client, char *data, char **answer);
+    void processEmitSignal(QObject *client, char *data, char **answer);
+
 };
 
 #endif // QMETAHOST_H

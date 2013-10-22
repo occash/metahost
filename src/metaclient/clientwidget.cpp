@@ -1,6 +1,6 @@
 #include "clientwidget.h"
 
-#include <qtcptransport.h>
+#include <qmetaclient.h>
 #include <qmetahost.h>
 
 #include <QtNetwork/QTcpSocket>
@@ -31,11 +31,12 @@ void ClientWidget::onConnectClicked()
 	QHostAddress address(ipAddress->text());
 	client = new QTcpSocket(this);
 	client->connectToHost(address, 6565, QIODevice::ReadWrite);
-	
+    
 	host = new QMetaHost();
-    transport = new QTcpTransport(host, client);
+    transport = new QMetaClient(host, this);
+    transport->setDevice(client);
 
-	serverObj = host->getObject("ServerButton");
+	serverObj = host->getObject("ServerButton", transport);
 	connect(serverObj, SIGNAL(clicked()), this, SLOT(onServerButtonClicked()));
 }
 

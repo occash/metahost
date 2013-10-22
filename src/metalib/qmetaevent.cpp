@@ -2,9 +2,9 @@
 
 int MetaEventType = QEvent::registerEventType();
 
-QMetaEvent::QMetaEvent(char *data, quint16 size)
+QMetaEvent::QMetaEvent(QObject *container, char *data)
     : QEvent((QEvent::Type)MetaEventType),
-    _data(data),
-    _size(size)
+    _container(container),
+    _data(data)
 {
 }

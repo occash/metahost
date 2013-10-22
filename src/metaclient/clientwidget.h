@@ -4,7 +4,7 @@
 #include <QWidget>
 
 class QTcpSocket;
-class QTcpTransport;
+class QMetaClient;
 class QMetaHost;
 
 class QLineEdit;
@@ -20,7 +20,7 @@ public:
 
 private:
 	QTcpSocket *client;
-	QTcpTransport *transport;
+	QMetaClient *transport;
 	QMetaHost *host;
 	QObject *serverObj;
 

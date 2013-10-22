@@ -149,13 +149,13 @@ int main(int argc, char *argv[])
 {
     QApplication a(argc, argv);
 
-    /*ClientWidget w;
-	w.show();*/
+    ClientWidget w;
+	w.show();
 
-    QTcpSocket client;
+    /*QTcpSocket client;
     client.connectToHost("127.0.0.1", 6565, QIODevice::ReadWrite);
     char *ptr = nullptr;
-    qint64 msglen = 0;
+    qint64 msglen = 0;*/
 
     /*testQueryObjectInfo(&ptr, &msglen);
     client.write(ptr, msglen);
@@ -169,9 +169,9 @@ int main(int argc, char *argv[])
     client.write(ptr, msglen);
     delete ptr;*/
 
-    testReturnClassInfo(&ptr, &msglen);
+    /*testReturnClassInfo(&ptr, &msglen);
     client.write(ptr, msglen);
-    delete ptr;
+    delete ptr;*/
 
     return a.exec();
 }

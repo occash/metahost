@@ -3,9 +3,7 @@
 
 #include <QObject>
 #include <QMetaObject>
-#include <QString>
 #include <QStringList>
-#include <QDataStream>
 
 struct ClassMeta
 {
@@ -17,6 +15,7 @@ struct ClassMeta
 struct ObjectMeta
 {
     quint32 id;
+    QObject *client;
 	bool qualified;
     QStringList classes;
 };

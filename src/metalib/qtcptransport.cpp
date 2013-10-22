@@ -55,7 +55,6 @@ void QTcpTransport::handleDisconnection()
 void QTcpTransport::_addClient(QTcpSocket *client)
 {
 	connect(client, SIGNAL(disconnected()), this, SLOT(handleDisconnection()));
-	connect(client, SIGNAL(readyRead()), this, SLOT(dispatch()));
 
     QMetaClient *metaClient = new QMetaClient(_host, this);
     metaClient->setDevice(client);
