@@ -4,9 +4,10 @@
 
 #include <QtNetwork/QTcpSocket>
 #include <QtNetwork/QTcpServer>
-#include <QDebug>
 #include <QByteArray>
 #include <QDataStream>
+
+#include <QDebug>
 
 QTcpTransport::QTcpTransport(QMetaHost *host, QTcpServer *server, QObject *parent) :
     QObject(parent),
@@ -65,8 +66,15 @@ void QTcpTransport::_addClient(QTcpSocket *client)
 
 void QTcpTransport::_removeClient(QTcpSocket *client)
 {
-    //_clients.removeAll(client);
-    //client->deleteLater();
+    foreach(QMetaClient *metaClient, _clients)
+    {
+        if(metaClient->device() == client)
+        {
+            int id = _clients.indexOf(metaClient);
+            metaClient->deleteLater();
+            _clients.removeAt(id);
+        }
+    }
 
     qDebug() << "Client disconnected:" << client->peerAddress();
 }

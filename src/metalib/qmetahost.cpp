@@ -146,39 +146,14 @@ QMetaHost::~QMetaHost()
 
 bool QMetaHost::registerObject(QObject *object)
 {
-    bool result = true;
     const QMetaObject *meta = object->metaObject();
     if(!meta)
         return false;
 
-    while(meta)
-    {
-        QString className = metaName(meta);
-        if(_classes.find(className) != _classes.end())
-            continue;
+    bool result = registerMetaClass(meta);
 
-        result &= checkRevision(meta);
-
-        quint32 metaStringSize;
-        result &= ((metaStringSize = computeMetaStringSize(meta)) >= 0);
-
-        quint32 metaDataSize;
-        result &= ((metaDataSize = computeMetaDataSize(meta)) >= 0);
-
-        if(!result)
-            return result;
-
-        ClassMeta classMeta = { 
-            const_cast<QMetaObject *>(meta),
-            metaDataSize,
-            metaStringSize
-        };
-        _classes.insert(className, classMeta);
-
-        meta = meta->d.superdata;
-    }
-
-    _localObjects.insert(object, new QObjectList());
+    if(result)
+        _localObjects.insert(object, new QObjectList());
 
     return result;
 }
@@ -201,6 +176,14 @@ void QMetaHost::processQueryObjectInfo(QObject *client, char *data, char **answe
             object = i.key();
             if((*i)->indexOf(client) == -1)
                 (*i)->append(client);
+
+            if(!_clients.contains(client))
+            {
+                _clients.append(client);
+                connect(client, SIGNAL(destroyed(QObject *)), 
+                    this, SLOT(onDestroyed(QObject *)));
+            }
+
             break;
         }
     }
@@ -273,6 +256,7 @@ void QMetaHost::processReturnObjectInfo(QObject *client, char *data, char **answ
     ObjectMeta objectMeta;
     objectMeta.id = id;
     objectMeta.qualified = true;
+    objectMeta.client = client;
     ptr += sizeof(quint32);
 
     //Traverse through class names required to build object
@@ -402,7 +386,7 @@ void QMetaHost::processEmitSignal(QObject *client, char *data, char **answer)
     if(o == _remoteIds.end())
         return;
 
-    quint32 method_index = *((quint32 *)data);
+    int method_index = *((int *)data);
     data += sizeof(quint32);
 
     const QMetaObject *metaObject = (*o)->metaObject();
@@ -444,7 +428,6 @@ void QMetaHost::processEmitSignal(QObject *client, char *data, char **answer)
         }
     }
     
-
 	QMetaObject::activate((*o), metaObject, local_index, argv);
 }
 
@@ -454,7 +437,6 @@ void QMetaHost::processCommand(QObject *client, char *data)
     quint8 command = *((quint8 *)data);
     data += sizeof(quint8);
     char *answer = nullptr;
-    int answerSize = 0;
 
     switch(command)
     {
@@ -764,4 +746,53 @@ bool QMetaHost::constructObject(QObject *object, const QStringList& classes)
     }
 
     return true;
+}
+
+void QMetaHost::onDestroyed(QObject *client)
+{
+    int clientId = _clients.indexOf(client);
+    _clients.removeAt(clientId);
+
+    foreach(QObjectList *clients, _localObjects)
+    {
+        int idx = clients->indexOf(client);
+        clients->removeAt(idx);
+    }
+}
+
+bool QMetaHost::registerMetaClass(const QMetaObject *meta)
+{
+    bool result = true;
+
+    while(meta)
+    {
+        QString className = metaName(meta);
+        if(_classes.find(className) != _classes.end())
+        {
+            meta = meta->d.superdata;
+            continue;
+        }
+
+        result &= checkRevision(meta);
+
+        quint32 metaStringSize;
+        result &= ((metaStringSize = computeMetaStringSize(meta)) >= 0);
+
+        quint32 metaDataSize;
+        result &= ((metaDataSize = computeMetaDataSize(meta)) >= 0);
+
+        if(!result)
+            return result;
+
+        ClassMeta classMeta = { 
+            const_cast<QMetaObject *>(meta),
+            metaDataSize,
+            metaStringSize
+        };
+        _classes.insert(className, classMeta);
+
+        meta = meta->d.superdata;
+    }
+
+    return result;
 }

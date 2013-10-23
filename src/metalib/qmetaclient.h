@@ -12,7 +12,9 @@ class METAEXPORT QMetaClient : public QObject
     Q_OBJECT
 public:
     QMetaClient(QMetaHost *host, QObject *parent = 0);
+
     void setDevice(QIODevice *d);
+    QIODevice *device() const;
 
 protected:
     bool event(QEvent *e);
@@ -22,7 +24,7 @@ private slots:
 
 private:
     QMetaHost *_host;
-    QIODevice *_client;
+    QIODevice *_device;
     
 };
 

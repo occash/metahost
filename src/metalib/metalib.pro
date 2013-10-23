@@ -23,16 +23,14 @@ SOURCES += \
     qtcptransport.cpp \
     qproxyobject.cpp \
     qmetahost.cpp \
-    proto.cpp \
     qmetaclient.cpp \
-    qtcpclient.cpp
+    qmetaevent.cpp
 
 HEADERS += \
-    qtcptransport.h \
     qproxyobject.h \
-    qmetatransport.h \
     qmetahost.h \
     proto.h \
     global.h \
     qmetaclient.h \
-    qtcpclient.h
+    qtcptransport.h \
+    qmetaevent.h

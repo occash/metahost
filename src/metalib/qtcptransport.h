@@ -2,14 +2,12 @@
 #define QTCPTRANSPORT_H
 
 #include "global.h"
-#include "qmetatransport.h"
 
+#include <QObject>
 #include <QList>
 
 class QTcpServer;
 class QTcpSocket;
-class QHostAddress;
-class QIODevice;
 class QMetaClient;
 class QMetaHost;
 
@@ -31,8 +29,9 @@ private slots:
     void handleDisconnection();
     
 private:
-    QMetaHost *_host;
     typedef QList<QMetaClient *> ClientList;
+
+    QMetaHost *_host;
     QTcpServer *_server;
 	QTcpSocket *_peer;
     ClientList _clients;

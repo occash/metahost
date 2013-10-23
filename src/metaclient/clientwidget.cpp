@@ -33,6 +33,7 @@ void ClientWidget::onConnectClicked()
 	client->connectToHost(address, 6565, QIODevice::ReadWrite);
     
 	host = new QMetaHost();
+    host->registerClass<QPushButton>();
     transport = new QMetaClient(host, this);
     transport->setDevice(client);
 
