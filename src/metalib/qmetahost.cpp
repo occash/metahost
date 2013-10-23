@@ -43,7 +43,8 @@ void QMetaHost::hostCallback(QObject *caller, int method_index, void **argv)
 
     //Allocate memory for answer
     int headerSize = sizeof(quint16);
-    quint16 answerSize = sizeof(quint8) + sizeof(quint32) * 2;
+    quint16 answerSize = sizeof(quint8) + sizeof(quint32) + 
+        sizeof(int) + sizeof(quint16);
 
 	const QMetaObject *metaObject = caller->metaObject();
 	QMetaMethod metaMethod = metaObject->method(method_index);
@@ -55,7 +56,7 @@ void QMetaHost::hostCallback(QObject *caller, int method_index, void **argv)
     {
         const QByteArray& typeName = paramTypes.at(i);
         int typeId = QMetaType::type(typeName.constData());
-        bool saved = QMetaType::save(argStream, typeId, argv[i]);
+        bool saved = QMetaType::save(argStream, typeId, argv[i + 1]);
         if(!saved)
         {
             qWarning() << "Cannot read meta type" << typeName;
@@ -81,11 +82,18 @@ void QMetaHost::hostCallback(QObject *caller, int method_index, void **argv)
     ptr += sizeof(quint32);
 	
     //Set method index
-    *((quint32 *)ptr) = method_index;
-    ptr += sizeof(quint32);
+    *((int *)ptr) = method_index;
+    ptr += sizeof(int);
 
-    //Copy raw parameters data
-    memcpy(ptr, argData.data(), argData.size());
+    if(paramTypes.size() > 0)
+    {
+        //Set raw data size
+        *((quint16 *)ptr) = argData.size();
+        ptr += sizeof(quint16);
+
+        //Copy raw parameters data
+        memcpy(ptr, argData.data(), argData.size());
+    }
 
     foreach(QObject *client, *(*i))
     {
@@ -161,9 +169,9 @@ bool QMetaHost::registerObject(QObject *object)
             return result;
 
         ClassMeta classMeta = { 
-            const_cast<QMetaObject *>(meta), 
-            metaStringSize, 
-            metaDataSize 
+            const_cast<QMetaObject *>(meta),
+            metaDataSize,
+            metaStringSize
         };
         _classes.insert(className, classMeta);
 
@@ -302,13 +310,13 @@ void QMetaHost::processQueryClassInfo(QObject *client, char *data, char **answer
 
     //Compute size of packet required
     int answerSize = sizeof(quint8) + 1;
+    answerSize += className.size() + 1;
 
     auto i = _classes.find(className);
     if(i != _classes.end())
-    {
-        answerSize += strlen((*i).metaObject->d.stringdata); //no +1 because it has added earlier
-        answerSize += sizeof(quint32) * 2;
-        answerSize += (*i).dataSize;
+    {        
+        answerSize += sizeof(quint16) * 2;
+        answerSize += (*i).dataSize * sizeof(uint);
         answerSize += (*i).stringSize;
     }
 
@@ -326,19 +334,22 @@ void QMetaHost::processQueryClassInfo(QObject *client, char *data, char **answer
     *((quint8 *)ptr) = type;
     ptr += sizeof(quint8);
 
-    *ptr = '\0'; //Found flag (false by default)
+    memcpy(ptr, data, className.size() + 1);
+    ptr += className.size() + 1;
+
+    *((bool *)ptr) = false; //Found flag (false by default)
 
     //Copy meta information to message
     if(i != _classes.end())
     {
-        memcpy(ptr, data, className.size() + 1);
-        ptr += className.size() + 1;
+        *((bool *)ptr) = true;
+        ptr += sizeof(bool);
 
         *((quint16 *)ptr) = (*i).dataSize;
         ptr += sizeof(quint16);
 
-        memcpy(ptr, (*i).metaObject->d.data, (*i).dataSize);
-        ptr += (*i).dataSize;
+        memcpy(ptr, (*i).metaObject->d.data, (*i).dataSize * sizeof(uint));
+        ptr += (*i).dataSize * sizeof(uint);
 
         *((quint16 *)ptr) = (*i).stringSize;
         ptr += sizeof(quint16);
@@ -350,15 +361,15 @@ void QMetaHost::processQueryClassInfo(QObject *client, char *data, char **answer
 
 void QMetaHost::processReturnClassInfo(QObject *client, char *data, char **answer)
 {
-    bool found = *((bool *)data);
+    QString className(data);
+    data += className.size() + 1;
 
+    bool found = *((bool *)data);
     //Remote side didn't found class definition
     if(!found)
         return;
 
-    QString className(data);
-    data += className.size() + 1;
-
+    data += sizeof(bool);
     ClassMeta classMeta;
     QMetaObject *classInfo = new QMetaObject();
     
@@ -367,7 +378,7 @@ void QMetaHost::processReturnClassInfo(QObject *client, char *data, char **answe
     data += sizeof(quint16);
     classInfo->d.data = new uint[dataSize];
     memcpy((void *)classInfo->d.data, data, dataSize * sizeof(uint));
-    data += dataSize;
+    data += dataSize * sizeof(uint);
 
     quint16 stringSize = *((quint16 *)data);
     classMeta.stringSize = stringSize;
@@ -384,41 +395,57 @@ void QMetaHost::processReturnClassInfo(QObject *client, char *data, char **answe
 
 void QMetaHost::processEmitSignal(QObject *client, char *data, char **answer)
 {
-                	//Move to signal handler
-    /*quint8 parent = 0;
-	const QMetaObject *m = mo;
-	while (m) {
-		if(method_index >= m->methodOffset())
-			break;
+    quint32 id = *((quint32 *)data);
+    data += sizeof(quint32);
 
-		parent++;
-		m = m->d.superdata;
-	}
+    auto o = _remoteIds.find(id);
+    if(o == _remoteIds.end())
+        return;
 
-    quint32 local_index = method_index - m->methodOffset();*/
-			/*QString objName;
-			in >> objName;
+    quint32 method_index = *((quint32 *)data);
+    data += sizeof(quint32);
 
-			int parents;
-			in >> parents;
+    const QMetaObject *metaObject = (*o)->metaObject();
+    while (metaObject) {
+        if(method_index >= metaObject->methodOffset())
+            break;
 
-			int method_index;
-			in >> method_index;
+        metaObject = metaObject->d.superdata;
+    }
 
-			int numArgs;
-			in >> numArgs;
+    quint32 local_index = method_index - metaObject->methodOffset();
+    QMetaMethod metaMethod = metaObject->method(method_index);
+    QList<QByteArray> paramTypes = metaMethod.parameterTypes();
+    void **argv = 0;
+    if(paramTypes.size() > 0)
+    {
+        quint16 dataSize = *((quint16 *)data);
+        data += sizeof(quint16);
 
-			auto o = _objects.find(objName);
-			if(o == _objects.end())
-				return;
+        //Allocate memory for raw params
+        int arrayLen = paramTypes.size() + 1;
+        argv = (void **)qMalloc(arrayLen * sizeof(void *));
+        argv[0] = 0;
 
-			ObjectMeta meta = (*o);
-			const QMetaObject *metaObject = meta.object->metaObject();
-			for(int i = 0; i < parents; ++i) {
-				metaObject = metaObject->d.superdata;
-			}
+        QByteArray argData = QByteArray::fromRawData(data, dataSize);
+        QDataStream argStream(&argData, QIODevice::ReadOnly);
 
-			QMetaObject::activate((*o).object, metaObject, method_index, 0);*/
+        for(int i = 0; i < paramTypes.size(); ++i)
+        {
+            const QByteArray& typeName = paramTypes.at(i);
+            int typeId = QMetaType::type(typeName.constData());
+            argv[i + 1] = QMetaType::construct(typeId);
+            bool loaded = QMetaType::load(argStream, typeId, argv[i + 1]);
+            if(!loaded)
+            {
+                qWarning() << "Cannot load meta type" << typeName;
+                return;
+            }
+        }
+    }
+    
+
+	QMetaObject::activate((*o), metaObject, local_index, argv);
 }
 
 void QMetaHost::processCommand(QObject *client, char *data)
@@ -581,7 +608,7 @@ quint16 QMetaHost::computeMetaStringSize(const QMetaObject *meta)
     }
 
     if(*lastChar) while(*lastChar++);
-    return lastChar - msdata;
+    return lastChar - msdata + 1;
 }
 
 quint16 QMetaHost::computeMetaDataSize(const QMetaObject *meta)
@@ -595,7 +622,7 @@ quint16 QMetaHost::computeMetaDataSize(const QMetaObject *meta)
     int metaSize = 15; //meta info + eod
     metaSize += mdata[2] * 2; //class info
     metaSize += mdata[4] * 5; //class methods
-    metaSize += mdata[6] * 4; //class properties
+    metaSize += mdata[6] * 3; //class properties
     metaSize += mdata[8] * 4; //class enums
     uint eshift = mdata[9];
     for(uint i = 0; i < mdata[8]; ++i) {
@@ -630,7 +657,7 @@ QObject *QMetaHost::getObject(const QString& name, QObject *client)
             return nullptr;
     }
 
-    makeQuery(client, name, QueryObjectInfo);
+    makeQuery(client, name, QueryObjectInfo, SIGNAL(gotObjectInfo()));
 
     object = findObjectByName(name);
     if(!object)
@@ -646,7 +673,7 @@ QObject *QMetaHost::getObject(const QString& name, QObject *client)
 		auto c = _classes.find(clsName);
 		if(c == _classes.end())
 		{
-            makeQuery(client, clsName, QueryClassInfo);
+            makeQuery(client, clsName, QueryClassInfo, SIGNAL(gotClassInfo()));
 
 			auto c = _classes.find(clsName);
 			if(c == _classes.end())
@@ -685,7 +712,8 @@ void QMetaHost::prepareQuery(char *data, char **answer, quint8 type)
     *answer = msg;
 }
 
-void QMetaHost::makeQuery(QObject *client, const QString& name, quint8 ctype)
+void QMetaHost::makeQuery(QObject *client, const QString& name, 
+    quint8 ctype, const char *signal)
 {
     QByteArray nameBytes = name.toLocal8Bit();
     char *rawName = nameBytes.data();
@@ -697,20 +725,31 @@ void QMetaHost::makeQuery(QObject *client, const QString& name, quint8 ctype)
     QEventLoop loop;
     QTimer timer;
     connect(&timer, SIGNAL(timeout()), &loop, SLOT(quit()));
-    connect(this, SIGNAL(gotObjectInfo()), &loop, SLOT(quit()));
+    connect(this, signal, &loop, SLOT(quit()));
     timer.start(3000);
     loop.exec();
 }
 
-void QMetaHost::constructObject(QObject *object, const QStringList& classes)
+bool QMetaHost::constructObject(QObject *object, const QStringList& classes)
 {
-    QMetaObject *last = nullptr;
-    QMetaObject *first = nullptr;
-    QProxyObject *proxy = static_cast<QProxyObject *>(object);
+    if(!classes.size())
+        return false;
 
+    auto latestClass = _classes.find(classes[0]);
+    if(latestClass == _classes.end())
+        return false;
+
+    QMetaObject *metaClass = (*latestClass).metaObject;
+    QProxyObject *proxy = static_cast<QProxyObject *>(object);
+    proxy->setMetaObject(metaClass);
+    
+
+    QMetaObject *last = nullptr;
     foreach(const QString& clname, classes)
     {
         auto cl = _classes.find(clname);
+        if(cl == _classes.end())
+            return false;
 
         if(last)
         {
@@ -718,13 +757,11 @@ void QMetaHost::constructObject(QObject *object, const QStringList& classes)
                 const_cast<QMetaObject *>(last->d.superdata);
 
             if(!superClass)
-                superClass = (*cl).metaObject;
+                last->d.superdata = (*cl).metaObject;
         }
-        else
-            first = (*cl).metaObject;
 
         last = (*cl).metaObject;
     }
 
-    proxy->setMetaObject(first);
+    return true;
 }

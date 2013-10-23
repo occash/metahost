@@ -59,8 +59,9 @@ signals:
 
 private:
     void prepareQuery(char *data, char **answer, quint8 ctype);
-    void makeQuery(QObject *client, const QString& name, quint8 ctype);
-    void constructObject(QObject *object, const QStringList& classes);
+    void makeQuery(QObject *client, const QString& name, 
+        quint8 ctype, const char *signal);
+    bool constructObject(QObject *object, const QStringList& classes);
     //Processing stuff
     void processQueryObjectInfo(QObject *client, char *data, char **answer);
     void processReturnObjectInfo(QObject *client, char *data, char **answer);
