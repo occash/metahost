@@ -4,9 +4,10 @@
 #include <QDebug>
 #include <QMetaObject>
 
-QProxyObject::QProxyObject(QObject *parent) :
+QProxyObject::QProxyObject(QMetaHost *host, QObject *parent) :
     QObject(parent),
-    _meta(nullptr)
+    _meta(nullptr),
+    _host(host)
 {
 }
 
@@ -33,8 +34,8 @@ void *QProxyObject::qt_metacast(const char *_clname)
 
 int QProxyObject::qt_metacall(QMetaObject::Call _c, int _id, void **_a)
 {
-	qDebug() << _c << _id;
-	return _id;
+    int id = _host->invokeRemoteMethod(this, _c, _id, _a);
+	return id;
 }
 
 void QProxyObject::setMetaObject(QMetaObject *meta)

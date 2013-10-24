@@ -20,11 +20,19 @@ public:
 
 private:
 	friend class QMetaHost;
-    QProxyObject(QObject *parent = 0);
+    QProxyObject(QMetaHost *host, QObject *parent = 0);
     void setMetaObject(QMetaObject *meta);
 
 private:
+    QMetaHost *_host;
 	QMetaObject *_meta;
+
+    struct {
+        QMetaObject::Call callType;
+        int methodIndex;
+        int returnId;
+        void *returnArg;
+    } ret;
     
 };
 

@@ -4,6 +4,7 @@
 
 #include <QIODevice>
 #include <QCoreApplication>
+#include <QDebug>
 
 QMetaClient::QMetaClient(QMetaHost *host, QObject *parent) :
     QObject(parent),
@@ -43,6 +44,12 @@ void QMetaClient::onReadyRead()
             return;
 
         char *data = new char[packetSize];
+        if(!data)
+        {
+            qWarning() << "Cannot allocate buffer for message";
+            return;
+        }
+
         if(_device->read(data, packetSize) == packetSize)
         {
             QMetaEvent *event = new QMetaEvent(this, data);

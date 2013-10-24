@@ -6,7 +6,7 @@
 class QTcpServer;
 class QTcpTransport;
 class QMetaHost;
-
+class MocTest;
 class QPushButton;
 
 class ServertWidget : public QWidget
@@ -21,7 +21,7 @@ private:
 	QTcpServer *server;
 	QTcpTransport *transport;
 	QMetaHost *host;
-
+    MocTest *test;
 	QPushButton *button;
 
 };

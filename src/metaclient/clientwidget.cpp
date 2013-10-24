@@ -39,6 +39,10 @@ void ClientWidget::onConnectClicked()
 
 	serverObj = host->getObject("ServerButton", transport);
 	connect(serverObj, SIGNAL(clicked()), this, SLOT(onServerButtonClicked()));
+
+    QObject *test = host->getObject("TestObject", transport);
+    int ret;
+    QMetaObject::invokeMethod(test, "test_params", Q_RETURN_ARG(int, ret), Q_ARG(int, 1), Q_ARG(qreal, 2));
 }
 
 void ClientWidget::onServerButtonClicked()

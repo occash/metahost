@@ -11,6 +11,7 @@
 class QTcpTransport;
 struct QMetaObject;
 class QIODevice;
+class QProxyObject;
 
 class METAEXPORT QMetaHost : public QObject
 {
@@ -39,6 +40,8 @@ private:
     void processQueryClassInfo(QObject *client, char *data, char **answer);
     void processReturnClassInfo(QObject *client, char *data, char **answer);
     void processEmitSignal(QObject *client, char *data, char **answer);
+    void processCallMetaMethod(QObject *client, char *data, char **answer);
+    void processReturnMetaMethod(QObject *client, char *data, char **answer);
 
     //Helper functions
     bool registerMetaClass(const QMetaObject *meta);
@@ -54,9 +57,10 @@ private:
 
     //Callback functions
     static void hostCallback(QObject *caller, int method_index, void **argv);
-    static void signalCallback(QObject *caller, int method_index, void **argv);
-    static void slotCallback(QObject *caller, int method_index, void **argv);
 	static bool initSignalSpy();
+
+    friend class QProxyObject;
+    int invokeRemoteMethod(QObject *_o, QMetaObject::Call _c, int _id, void **_a);
 
 private:
     typedef QMap<QObject *, QObjectList *> LocalObjectMap;
@@ -77,6 +81,7 @@ private:
 signals:
 	void gotObjectInfo();
 	void gotClassInfo();
+    void gotMethodReturn();
 
 };
 

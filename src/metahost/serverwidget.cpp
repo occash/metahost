@@ -1,4 +1,5 @@
 #include "serverwidget.h"
+#include "moctest.h"
 
 #include <qtcptransport.h>
 #include <qmetahost.h>
@@ -14,6 +15,8 @@ ServertWidget::ServertWidget()
     button->setObjectName("ServerButton");
 	layout->addWidget(button);
 	setLayout(layout);
+    test = new MocTest(this);
+    test->setObjectName("TestObject");
 
 	//Create host
 	server = new QTcpServer(this);
@@ -23,6 +26,7 @@ ServertWidget::ServertWidget()
     transport = new QTcpTransport(host, server);
 
 	host->registerObject(button);
+    host->registerObject(test);
 }
 
 ServertWidget::~ServertWidget()
