@@ -1,0 +1,12 @@
+Makefile
+*.opensdf
+*.sdf
+*.sln
+*.suo
+*.user
+*.vcxproj
+*.vcxproj.filters
+*.pdb
+/ipch
+*/debug
+*/release

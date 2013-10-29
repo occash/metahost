@@ -3,22 +3,23 @@ TEMPLATE = app
 CONFIG += qt
 QT += core network
 
-ROOTDIR = ../..
-MAINTARGET = metaclient
+ROOTDIR = $$PWD/../..
+DEBUGTARGET = simpleclientd
+RELEASETARGET = simpleclient
 
 DESTDIR = $$ROOTDIR/bin
 
-INCLUDEPATH += ../metalib
+INCLUDEPATH += $$ROOTDIR/include
 
-LIBS += -L$$ROOTDIR/bin -lmetalib
+LIBS += -L$$ROOTDIR/lib -lmetalib
 
 CONFIG(debug, debug|release){
     DEFINES += DEBUG
-    TARGET = $$MAINTARGET
+    TARGET = $$DEBUGTARGET
 }
 
 CONFIG(release, debug|release){
-    TARGET = $$MAINTARGET
+    TARGET = $$RELEASETARGET
     DEFINES += QT_NO_DEBUG_OUTPUT
 }
 
@@ -27,4 +28,4 @@ HEADERS += \
 
 SOURCES += \
 	clientwidget.cpp \
-    main.cpp
+        main.cpp

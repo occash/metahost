@@ -4,18 +4,20 @@ CONFIG += qt dll
 QT += core network
 DEFINES += METADLL
 
-ROOTDIR = ../..
-MAINTARGET = metalib
+ROOTDIR = $$PWD/../..
+DEBUGTARGET = metalibd
+RELEASETARGET = metalib
 
-DESTDIR = $$ROOTDIR/bin
+DESTDIR = $$ROOTDIR/lib
+DLLDESTDIR = $$ROOTDIR/bin
 
 CONFIG(debug, debug|release){
     DEFINES += DEBUG
-    TARGET = $$MAINTARGET
+    TARGET = $$DEBUGTARGET
 }
 
 CONFIG(release, debug|release){
-    TARGET = $$MAINTARGET
+    TARGET = $$RELEASETARGET
     DEFINES += QT_NO_DEBUG_OUTPUT
 }
 
@@ -34,3 +36,8 @@ HEADERS += \
     qmetaclient.h \
     qtcptransport.h \
     qmetaevent.h
+
+include_files.path = $$ROOTDIR/include
+include_files.files = $$HEADERS
+
+INSTALLS += include_files
