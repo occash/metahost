@@ -26,7 +26,8 @@ SOURCES += \
     qproxyobject.cpp \
     qmetahost.cpp \
     qmetaclient.cpp \
-    qmetaevent.cpp
+    qmetaevent.cpp \
+    paramholder.cpp
 
 HEADERS += \
     qproxyobject.h \
@@ -35,7 +36,8 @@ HEADERS += \
     global.h \
     qmetaclient.h \
     qtcptransport.h \
-    qmetaevent.h
+    qmetaevent.h \
+    paramholder.h
 
 include_files.path = $$ROOTDIR/include
 include_files.files = $$HEADERS

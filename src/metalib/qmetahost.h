@@ -24,6 +24,7 @@ USA.
 
 #include "global.h"
 #include "proto.h"
+#include "paramholder.h"
 
 #include <QObject>
 #include <QMap>
@@ -88,13 +89,11 @@ private:
     typedef QMap<QObject *, ObjectMeta> RemoteObjectMap;
     typedef QMap<quint32, QObject *> RemoteHelperMap;
     typedef QMap<QString, ClassMeta> ClassMap;
-    typedef QList<QObject *> ClientList;
 
     LocalObjectMap _localObjects;
     RemoteObjectMap _remoteObjects;
     RemoteHelperMap _remoteIds;
     ClassMap _classes;
-    ClientList _clients;
 
 	static QMetaHost * _host;
 	static bool _initSpy;
@@ -102,7 +101,7 @@ private:
 signals:
 	void gotObjectInfo();
 	void gotClassInfo();
-    void gotMethodReturn();
+    void gotMethodReturn(ReturnParam param);
 
 };
 

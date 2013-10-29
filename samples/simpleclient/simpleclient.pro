@@ -11,7 +11,15 @@ DESTDIR = $$ROOTDIR/bin
 
 INCLUDEPATH += $$ROOTDIR/include
 
-LIBS += -L$$ROOTDIR/lib -lmetalib
+LIBS += -L$$ROOTDIR/lib
+
+CONFIG(debug, debug|release){
+    LIBS += -lmetalibd
+}
+
+CONFIG(release, debug|release){
+    LIBS += -lmetalib
+}
 
 CONFIG(debug, debug|release){
     DEFINES += DEBUG

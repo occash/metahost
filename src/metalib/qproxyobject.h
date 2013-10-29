@@ -47,13 +47,6 @@ private:
 private:
     QMetaHost *_host;
 	QMetaObject *_meta;
-
-    struct {
-        QMetaObject::Call callType;
-        int methodIndex;
-        int returnId;
-        void *returnArg;
-    } ret;
     
 };
 
