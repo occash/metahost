@@ -31,7 +31,7 @@ public:
 	void setString(const QString& str){ m_string = str; stringChanged(); }
 
 	Q_INVOKABLE void test() { qDebug() << "Test invoked"; }
-    Q_INVOKABLE int test_params(int i, qreal q) { qDebug() << "Test params invoked"; return 5; }
+    Q_INVOKABLE int test_params(int i, qreal q) { qDebug() << "Test params invoked" << i << q; return 5; }
 
 public slots:
 	void slot1() { qDebug() << "slot1 invoked"; emit signal1(); emit signal3(5);}

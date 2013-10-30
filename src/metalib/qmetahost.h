@@ -76,6 +76,8 @@ private:
     void makeQuery(QObject *client, const QString& name, 
         quint8 ctype, const char *signal);
     bool constructObject(QObject *object, const QStringList& classes);
+    void prepareReturnMetaMethod(quint32 o, QMetaObject::Call c, int id, 
+        void **argv, int typeId, int ret, char **answer);
 
     //Callback functions
     static void hostCallback(QObject *caller, int method_index, void **argv);

@@ -42,7 +42,7 @@ void ClientWidget::onConnectClicked()
 
     QObject *test = host->getObject("TestObject", transport);
     int ret;
-    QMetaObject::invokeMethod(test, "test_params", Q_RETURN_ARG(int, ret), Q_ARG(int, 1), Q_ARG(qreal, 2));
+    QMetaObject::invokeMethod(test, "test_params", Q_RETURN_ARG(int, ret), Q_ARG(int, 1), Q_ARG(qreal, 2.0));
 }
 
 void ClientWidget::onServerButtonClicked()

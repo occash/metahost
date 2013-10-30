@@ -320,17 +320,26 @@ int QMetaHost::invokeRemoteMethod(QObject *_o, QMetaObject::Call _c, int _id, vo
     QEventLoop loop;
     QTimer timer;
     connect(&timer, SIGNAL(timeout()), &loop, SLOT(quit()));
-    connect(this, SIGNAL(gotMethodReturn(ReturnParam param)),
-            &holder, SLOT(setParam(ReturnParam)));
-    connect(this, SIGNAL(gotMethodReturn(ReturnParam param)), &loop, SLOT(quit()));
+    connect(&timer, SIGNAL(timeout()), &holder, SLOT(setTimeout()));
+
+    connect(this, SIGNAL(gotMethodReturn(ReturnParam)),
+        &holder, SLOT(setParam(ReturnParam)));
+    connect(this, SIGNAL(gotMethodReturn(ReturnParam)), &loop, SLOT(quit()));
+
     timer.start(3000);
-    loop.exec();
-
-    if(!readRawReturn(&argData, meta, _id, _a[0]))
-        return 1;
-
+    //Wait until return to our function
+    do 
+    {
+        loop.exec();
+    } while ((holder.param.callType != _c ||
+        holder.param.methodIndex != _id) &&
+        !holder.timeout);
+    
     if(holder.param.callType != _c ||
         holder.param.methodIndex != _id)
+        return 1;
+
+    if(!readRawReturn(&holder.param.returnArg, meta, _id, _a[0]))
         return 1;
 
     return holder.param.returnId;
@@ -627,120 +636,107 @@ void QMetaHost::processEmitSignal(QObject *client, char *data, char **answer)
 
 void QMetaHost::processCallMetaMethod(QObject *client, char *data, char **answer)
 {
+    Q_UNUSED(client);
+    Q_UNUSED(answer);
+
     //First check if object is registered
     //_o, _c, _id, _a
-    int retId = 1;
-    QObject *object = *((QObject **)data);
-    data += sizeof(QObject *);
+    QObject *object = READ(data, QObject *);
+    QMetaObject::Call c = READ(data, QMetaObject::Call);
+    int id = READ(data, int);
 
     auto o = _localObjects.find(object);
-    if(o == _localObjects.end())
+    if(o == _localObjects.end()) 
+    {
+        prepareReturnMetaMethod(reinterpret_cast<quint32>(object), c, id,
+            nullptr, QMetaType::Void, 1, answer);
         return; //Send no such method
+    }
 
-    QMetaObject::Call c = *((QMetaObject::Call *)data);
-    data += sizeof(QMetaObject::Call);
-
-    int id = *((int *)data);
-    data += sizeof(int);
-
-    //TODO: remove code duplication
-    const QMetaObject *metaObject = object->metaObject();
-    QMetaMethod metaMethod = metaObject->method(id);
-    QList<QByteArray> paramTypes = metaMethod.parameterTypes();
-    void **argv = 0;
+    const QMetaObject *meta = object->metaObject();
+    const QMetaObject *m = meta;
 
     //Allocate memory for raw params
+    QList<QByteArray> paramTypes = methodArguments(meta, id);
     int arrayLen = paramTypes.size() + 1;
-    argv = (void **)qMalloc(arrayLen * sizeof(void *));
+    void **argv = (void **)qMalloc(arrayLen * sizeof(void *));
+    memset(argv, 0, 10);
 
-    const char *retName = metaMethod.typeName();
-    int retTypeId = -1;
+    //Move to method getReturnType()
+    int local_index = localIndex(&m, id);
+    int handle = methodHandle(m, local_index);
+    const char *retName = m->d.stringdata + m->d.data[handle + 2];
+
+    int typeId = QMetaType::Void;
     if(retName)
     {
-        retTypeId = QMetaType::type(retName);
-        argv[0] = QMetaType::construct(retTypeId);
+        typeId = QMetaType::type(retName);
+        argv[0] = QMetaType::construct(typeId);
     }
-    else
+
+    //Read raw parameters
+    quint16 dataSize = READ(data, quint16);
+    QByteArray argData = QByteArray::fromRawData(data, dataSize);
+    if(!readRawParams(&argData, meta, id, argv))
     {
-        argv[0] = 0;
+        prepareReturnMetaMethod(reinterpret_cast<quint32>(object), c, id,
+            nullptr, QMetaType::Void, 1, answer);
+        freeParams(meta, id, argv);
+        qFree(argv);
+        return;
     }
 
-    if(paramTypes.size() > 0)
-    {
-        quint16 dataSize = *((quint16 *)data);
-        data += sizeof(quint16);
-        
-        QByteArray argData = QByteArray::fromRawData(data, dataSize);
-        QDataStream argStream(&argData, QIODevice::ReadOnly);
+    //Call method
+    int returnId = QMetaObject::metacall(object, c, id, argv);
 
-        for(int i = 0; i < paramTypes.size(); ++i)
-        {
-            const QByteArray& typeName = paramTypes.at(i);
-            int typeId = QMetaType::type(typeName.constData());
-            argv[i + 1] = QMetaType::construct(typeId);
-            bool loaded = QMetaType::load(argStream, typeId, argv[i + 1]);
-            if(!loaded)
-            {
-                qWarning() << "Cannot load meta type" << typeName;
-                return; //Send no such method
-            }
-        }
-    }
+    //Prepare answer to caller side
+    prepareReturnMetaMethod(reinterpret_cast<quint32>(object), c, id,
+        argv, typeId, returnId, answer);
+    freeParams(meta, id, argv);
+    qFree(argv);
+}
 
-    retId = QMetaObject::metacall(object, c, id, argv);
-
+void QMetaHost::prepareReturnMetaMethod(quint32 o, QMetaObject::Call c, 
+    int id, void **argv, int typeId, int ret, char **answer)
+{
     int answerSize = sizeof(quint8) + sizeof(quint32) + 
         sizeof(QMetaObject::Call) + sizeof(int) * 2 + sizeof(quint16);
 
     QByteArray argData;
-    if(retName)
+    if(typeId != QMetaType::Void)
     {
         QDataStream argStream(&argData, QIODevice::WriteOnly);
-        bool saved = QMetaType::save(argStream, retTypeId, argv[0]);
-        if(!saved)
-            return; //Send no such method
+        bool saved = QMetaType::save(argStream, typeId, argv[0]);
+        if(!saved) 
+            ret = 1; //Send no such method
     }
 
     answerSize += argData.size();
     //Allocate memory for answer
-    int headerSize = sizeof(quint16);
-    *answer = new char[headerSize + answerSize];
+    *answer = new char[HEADER_SIZE + answerSize];
     char *ptr = *answer;
 
-    //Set header size
-    *((quint16 *)ptr) = answerSize;
-    ptr += sizeof(quint16);
-
-    //Set header type
-    quint8 type = ReturnMetaMethod;
-    *((quint8 *)ptr) = type;
-    ptr += sizeof(quint8);
+    //Set header size and type
+    WRITE(ptr, quint16, answerSize);
+    WRITE(ptr, quint8, ReturnMetaMethod);
 
     //Set qt_meta_call raw params
-    quint32 objectId = reinterpret_cast<quint32>(object);
-    *((quint32 *)ptr) = objectId;
-    ptr += sizeof(quint32);
+    WRITE(ptr, quint32, o);
+    WRITE(ptr, QMetaObject::Call, c);
+    WRITE(ptr, int, id);
 
-    *((QMetaObject::Call *)ptr) = c;
-    ptr += sizeof(QMetaObject::Call);
-
-    *((int *)ptr) = id;
-    ptr += sizeof(int);
-
-    *((int *)ptr) = retId;
-    ptr += sizeof(int);
+    WRITE(ptr, int, ret);
 
     //Check size on remote side!!
-    *((quint16 *)ptr) = 0;
+    SET(ptr, quint16, 0);
 
-    if(retName && argData.size() > 0)
+    if(argData.size() > 0)
     {
         //Set raw data size
-        *((quint16 *)ptr) = argData.size();
-        ptr += sizeof(quint16);
+        WRITE(ptr, quint16, argData.size())
 
         //Copy raw parameters data
-        memcpy(ptr, argData.data(), argData.size());
+        COPY(ptr, argData.data(), argData.size());
     }
 }
 

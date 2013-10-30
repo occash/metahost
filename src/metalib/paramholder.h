@@ -18,9 +18,11 @@ public:
     ParamHolder();
 
     ReturnParam param;
+    bool timeout;
 
 public slots:
     void setParam(const ReturnParam& param);
+    void setTimeout();
 };
 
 #endif // PARAMHOLDER_H
