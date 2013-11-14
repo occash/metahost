@@ -1,4 +1,4 @@
-#include "zeroconf.h"
+#include "qzeroconfiguration.h"
 
 #include <QDataStream>
 #include <QNetworkInterface>
@@ -29,11 +29,9 @@ bool QZeroConfiguration::lookup(const QString& service)
     bool ok = true;
     foreach(const QHostAddress& address, _addresses)
     {
-        qDebug() << "Broadcasting to" << address;
         int bytes = _socket.writeDatagram(datagram, 
             address, 6566);
 
-        qDebug() << "Result:" << ((bytes != -1) ? "ok" : "bad");
         ok &= bytes != -1;
     }
     
@@ -57,17 +55,14 @@ bool QZeroConfiguration::bind()
 {
     if(_socket.state() != QAbstractSocket::BoundState) {
         bool res = _socket.bind(6566, QUdpSocket::DontShareAddress);
-        qDebug() << (res ? "Bound" : "Not bound");
         return res;
     }
 
-    qDebug() << "Already bound";
     return true;
 }
 
 void QZeroConfiguration::onReadyRead()
 {
-    qDebug() << "Ready read";
     while(_socket.hasPendingDatagrams()) 
     {
         QByteArray datagram;
@@ -77,7 +72,6 @@ void QZeroConfiguration::onReadyRead()
         
         _socket.readDatagram(datagram.data(), datagram.size(),
             &sender, &senderPort);
-        qDebug() << "Client at address" << sender << "and port" << senderPort;
 
         dispatchMessage(sender, senderPort, datagram);
     }
@@ -106,8 +100,7 @@ void QZeroConfiguration::dispatchMessage(const QHostAddress& address, quint16 po
                 stream << (quint8)IAmServer;
                 stream << service;
 
-                int bytes = _socket.writeDatagram(answer, address, 6566);
-                qDebug() << "Answer" << ((bytes != -1) ? "sent" : "not sent");
+                _socket.writeDatagram(answer, address, 6566);
 
                 break;
             }

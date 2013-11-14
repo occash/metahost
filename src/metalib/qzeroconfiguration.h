@@ -4,8 +4,9 @@
 #include <QObject>
 #include <QUdpSocket>
 #include <QStringList>
+#include "global.h"
 
-class QZeroConfiguration : public QObject
+class METAEXPORT QZeroConfiguration : public QObject
 {
     Q_OBJECT
 
