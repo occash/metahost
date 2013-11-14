@@ -35,6 +35,8 @@ USA.
 #include <QCoreApplication>
 #include <QObjectList>
 
+#include <iostream>
+
 #define HEADER_SIZE sizeof(quint16)
 
 #define SET(ptr, type, data) \
@@ -51,13 +53,13 @@ USA.
     *((type *)ptr); \
     ptr += sizeof(type);
 
-int localIndex(const QMetaObject **meta, int method_index)
+int localIndex(const QMetaObject **meta, int method_index, bool prop = false)
 {
     //Find methods offset
     int offset = 0;
     const QMetaObject *m = (*meta)->d.superdata;
     while (m) {
-        offset += m->d.data[4];
+        offset += m->d.data[prop ? 6 : 4];
         m = m->d.superdata;
     }
 
@@ -67,24 +69,22 @@ int localIndex(const QMetaObject **meta, int method_index)
             break;
 
         *meta = (*meta)->d.superdata;
-        offset -= (*meta)->d.data[4];
+        offset -= (*meta)->d.data[prop ? 6 : 4];
     }
 
     return method_index - offset;
 }
 
-uint methodHandle(const QMetaObject *meta, int local_index)
+uint methodHandle(const QMetaObject *meta, int local_index, bool prop = false)
 {
-    return meta->d.data[5] + 5 * local_index;
+    return meta->d.data[prop ? 7 : 5] + ((prop ? 3 : 5) * local_index);
 }
 
-QList<QByteArray> methodArguments(const QMetaObject *meta, int method_index)
+QList<QByteArray> methodArguments(const QMetaObject *meta, uint handle)
 {
     QList<QByteArray> list;
 
     //Find method signature
-    int local_index = localIndex(&meta, method_index);
-    uint handle = methodHandle(meta, local_index);
     const char *signature = meta->d.stringdata + meta->d.data[handle];
 
     //Parse params
@@ -114,7 +114,9 @@ bool writeRawParams(QByteArray *ret, const QMetaObject *meta, int method_index, 
     QDataStream argStream(ret, QIODevice::WriteOnly);
 
     int paramNumber = 0;
-    foreach(const QByteArray& typeName, methodArguments(meta, method_index))
+    int local_index = localIndex(&meta, method_index);
+    uint handle = methodHandle(meta, local_index);
+    foreach(const QByteArray& typeName, methodArguments(meta, handle))
     {
         int typeId = QMetaType::type(typeName.constData());
         bool saved = QMetaType::save(argStream, typeId, argv[paramNumber + 1]);
@@ -136,7 +138,9 @@ bool readRawParams(QByteArray *ret, const QMetaObject *meta, int method_index, v
     QDataStream argStream(ret, QIODevice::ReadOnly);
 
     int paramNumber = 0;
-    foreach(const QByteArray& typeName, methodArguments(meta, method_index))
+    int local_index = localIndex(&meta, method_index);
+    uint handle = methodHandle(meta, local_index);
+    foreach(const QByteArray& typeName, methodArguments(meta, handle))
     {
         int typeId = QMetaType::type(typeName.constData());
         argv[paramNumber + 1] = QMetaType::construct(typeId);
@@ -178,7 +182,9 @@ bool readRawReturn(QByteArray *ret, const QMetaObject *meta, int method_index, v
 void freeParams(const QMetaObject *meta, int method_index, void **argv)
 {
     int paramNumber = 0;
-    foreach(const QByteArray& typeName, methodArguments(meta, method_index))
+    int local_index = localIndex(&meta, method_index);
+    uint handle = methodHandle(meta, local_index);
+    foreach(const QByteArray& typeName, methodArguments(meta, handle))
     {
         int typeId = QMetaType::type(typeName.constData());
         QMetaType::destroy(typeId, argv[paramNumber + 1]);
@@ -222,7 +228,7 @@ void QMetaHost::hostCallback(QObject *caller, int method_index, void **argv)
     if(!writeRawParams(&argData, metaObject, method_index, argv))
         return;
 
-    //Adjust message size to satore arguments
+    //Adjust message size to store arguments
     answerSize += argData.size();
 
     //Allocate memory for answer
@@ -355,6 +361,7 @@ QMetaHost::QMetaHost(QObject *parent)
 
 QMetaHost::~QMetaHost()
 {
+    _host = nullptr;
     auto i = _localObjects.begin();
     while(i != _localObjects.end())
     {
@@ -656,16 +663,22 @@ void QMetaHost::processCallMetaMethod(QObject *client, char *data, char **answer
     const QMetaObject *meta = object->metaObject();
     const QMetaObject *m = meta;
 
+    //decide whether it is property or method
+    bool prop = (c > QMetaObject::InvokeMetaMethod &&
+        c < QMetaObject::CreateInstance);
+
     //Allocate memory for raw params
-    QList<QByteArray> paramTypes = methodArguments(meta, id);
+    int local_index = localIndex(&m, id, prop);
+    int handle = methodHandle(m, local_index, prop);
+
+    QList<QByteArray> paramTypes;
+    if(!prop)
+        paramTypes = methodArguments(meta, handle);
     int arrayLen = paramTypes.size() + 1;
     void **argv = (void **)qMalloc(arrayLen * sizeof(void *));
-    memset(argv, 0, 10);
-
-    //Move to method getReturnType()
-    int local_index = localIndex(&m, id);
-    int handle = methodHandle(m, local_index);
-    const char *retName = m->d.stringdata + m->d.data[handle + 2];
+    memset(argv, 0, arrayLen * sizeof(void *));
+    
+    const char *retName = m->d.stringdata + m->d.data[handle + (prop ? 1 : 2)];
 
     int typeId = QMetaType::Void;
     if(retName)
