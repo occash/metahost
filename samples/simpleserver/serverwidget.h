@@ -17,6 +17,9 @@ public:
 	ServertWidget();
 	~ServertWidget();
 
+private slots:
+    void onPropChange();
+
 private:
 	QTcpServer *server;
 	QTcpTransport *transport;

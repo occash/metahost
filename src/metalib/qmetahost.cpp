@@ -133,13 +133,34 @@ bool writeRawParams(QByteArray *ret, const QMetaObject *meta, int method_index, 
     return true;
 }
 
-bool readRawParams(QByteArray *ret, const QMetaObject *meta, int method_index, void **argv)
+bool writeRawProp(QByteArray *ret, const QMetaObject *meta, int method_index, void **argv)
+{
+    QDataStream argStream(ret, QIODevice::WriteOnly);
+
+    int paramNumber = 0;
+    int local_index = localIndex(&meta, method_index, true);
+    uint handle = methodHandle(meta, local_index, true);
+    const char *typeName = meta->d.stringdata + meta->d.data[handle + 1];
+    if (!typeName)
+        return false;
+
+    int typeId = QMetaType::type(typeName);
+    bool saved = QMetaType::save(argStream, typeId, argv[1]);
+
+    if (!saved)
+    {
+        qWarning() << "Cannot read meta type" << typeName;
+        return false;
+    }
+
+    return true;
+}
+
+bool readRawParams(QByteArray *ret, const QMetaObject *meta, uint handle, void **argv)
 {
     QDataStream argStream(ret, QIODevice::ReadOnly);
 
     int paramNumber = 0;
-    int local_index = localIndex(&meta, method_index);
-    uint handle = methodHandle(meta, local_index);
     foreach(const QByteArray& typeName, methodArguments(meta, handle))
     {
         int typeId = QMetaType::type(typeName.constData());
@@ -157,13 +178,27 @@ bool readRawParams(QByteArray *ret, const QMetaObject *meta, int method_index, v
     return true;
 }
 
-bool readRawReturn(QByteArray *ret, const QMetaObject *meta, int method_index, void *argv)
+bool readRawProp(QByteArray *ret, int typeId, void **argv)
 {
     QDataStream argStream(ret, QIODevice::ReadOnly);
 
-    int local_index = localIndex(&meta, method_index);
-    uint handle = methodHandle(meta, local_index);
-    const char *retName = meta->d.stringdata + meta->d.data[handle + 2];
+    bool loaded = QMetaType::load(argStream, typeId, argv[0]);
+    if (!loaded)
+    {
+        qWarning() << "Cannot load meta type" << QMetaType::typeName(typeId);
+        return false;
+    }
+
+    return true;
+}
+
+bool readRawReturn(QByteArray *ret, const QMetaObject *meta, int method_index, void *argv, bool prop = false)
+{
+    QDataStream argStream(ret, QIODevice::ReadOnly);
+
+    int local_index = localIndex(&meta, method_index, prop);
+    uint handle = methodHandle(meta, local_index, prop);
+    const char *retName = meta->d.stringdata + meta->d.data[handle + (prop ? 1 : 2)];
 
     if(retName)
     {
@@ -190,6 +225,18 @@ void freeParams(const QMetaObject *meta, int method_index, void **argv)
         QMetaType::destroy(typeId, argv[paramNumber + 1]);
         paramNumber++;
     }
+}
+
+void freeProp(const QMetaObject *meta, int method_index, void **argv)
+{
+    int local_index = localIndex(&meta, method_index);
+    uint handle = methodHandle(meta, local_index);
+    const char *typeName = meta->d.stringdata + meta->d.data[handle + 1];
+    if (!typeName)
+        return;
+
+    int typeId = QMetaType::type(typeName);
+    QMetaType::destroy(typeId, argv[1]);
 }
 
 //******************************Private hooks************************************
@@ -289,8 +336,18 @@ int QMetaHost::invokeRemoteMethod(QObject *_o, QMetaObject::Call _c, int _id, vo
 
     QByteArray argData;
     const QMetaObject *meta = _o->metaObject();
-    if(!writeRawParams(&argData, meta, _id, _a))
-        return 1;
+
+    if (_c == QMetaObject::InvokeMetaMethod)
+    {
+        if (!writeRawParams(&argData, meta, _id, _a))
+            return 1;
+    }
+    else if (_c == QMetaObject::WriteProperty)
+    {
+        if (!writeRawProp(&argData, meta, _id, _a))
+            return 1;
+    }
+    //Else no params
 
     answerSize += argData.size();
 
@@ -345,7 +402,11 @@ int QMetaHost::invokeRemoteMethod(QObject *_o, QMetaObject::Call _c, int _id, vo
         holder.param.methodIndex != _id)
         return 1;
 
-    if(!readRawReturn(&holder.param.returnArg, meta, _id, _a[0]))
+    bool isProp = (_c == QMetaObject::ReadProperty) ||
+        ((_c >= QMetaObject::ResetProperty) && 
+        (_c <= QMetaObject::QueryPropertyUser));
+
+    if (!readRawReturn(&holder.param.returnArg, meta, _id, _a[0], isProp))
         return 1;
 
     return holder.param.returnId;
@@ -626,7 +687,8 @@ void QMetaHost::processEmitSignal(QObject *client, char *data, char **answer)
     data += sizeof(quint16);
 
     QByteArray argData = QByteArray::fromRawData(data, dataSize);
-    if(!readRawParams(&argData, meta, method_index, argv))
+    uint handle = methodHandle(m, local_index);
+    if(!readRawParams(&argData, meta, handle, argv))
     {
         freeParams(meta, method_index, argv);
         qFree(argv);
@@ -666,6 +728,7 @@ void QMetaHost::processCallMetaMethod(QObject *client, char *data, char **answer
     //decide whether it is property or method
     bool prop = (c > QMetaObject::InvokeMetaMethod &&
         c < QMetaObject::CreateInstance);
+    bool writeProp = (c == QMetaObject::WriteProperty);
 
     //Allocate memory for raw params
     int local_index = localIndex(&m, id, prop);
@@ -690,13 +753,27 @@ void QMetaHost::processCallMetaMethod(QObject *client, char *data, char **answer
     //Read raw parameters
     quint16 dataSize = READ(data, quint16);
     QByteArray argData = QByteArray::fromRawData(data, dataSize);
-    if(!readRawParams(&argData, meta, id, argv))
+    if (!prop)
     {
-        prepareReturnMetaMethod(reinterpret_cast<quint32>(object), c, id,
-            nullptr, QMetaType::Void, 1, answer);
-        freeParams(meta, id, argv);
-        qFree(argv);
-        return;
+        if (!readRawParams(&argData, meta, handle, argv))
+        {
+            prepareReturnMetaMethod(reinterpret_cast<quint32>(object), c, id,
+                nullptr, QMetaType::Void, 1, answer);
+            freeParams(meta, id, argv);
+            qFree(argv);
+            return;
+        }
+    }
+    if (writeProp)
+    {
+        if (!readRawProp(&argData, typeId, argv))
+        {
+            prepareReturnMetaMethod(reinterpret_cast<quint32>(object), c, id,
+                nullptr, QMetaType::Void, 1, answer);
+            freeProp(meta, id, argv);
+            qFree(argv);
+            return;
+        }
     }
 
     //Call method
@@ -705,7 +782,10 @@ void QMetaHost::processCallMetaMethod(QObject *client, char *data, char **answer
     //Prepare answer to caller side
     prepareReturnMetaMethod(reinterpret_cast<quint32>(object), c, id,
         argv, typeId, returnId, answer);
-    freeParams(meta, id, argv);
+    if (writeProp)
+        freeProp(meta, id, argv);
+    else if (!prop)
+        freeParams(meta, id, argv);
     qFree(argv);
 }
 

@@ -9,6 +9,7 @@
 #include <QLineEdit>
 #include <QVBoxLayout>
 #include <QMessageBox>
+#include <QDebug>
 
 ClientWidget::ClientWidget()
 {
@@ -43,6 +44,9 @@ void ClientWidget::onConnectClicked()
     QObject *test = host->getObject("TestObject", transport);
     int ret;
     QMetaObject::invokeMethod(test, "test_params", Q_RETURN_ARG(int, ret), Q_ARG(int, 1), Q_ARG(qreal, 2.0));
+    qDebug() << test->property("string").toString();
+    test->setProperty("string", "Trololo");
+    qDebug() << test->property("string").toString();
 }
 
 void ClientWidget::onServerButtonClicked()
