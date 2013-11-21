@@ -48,8 +48,18 @@ public:
     bool registerObject(QObject *);
     QObject *getObject(const QString& name, QObject *client);
 
+    //New interface for object cloning with automatic property connection
+    //and creation of class instance on remote side
+    //TODO: register meta classes right: copy meta srting
+    //instead of using static location
+    /*template<class T>
+    QObject *cloneObject(const QString& name, QObject *client);
+    QObject *newInstance(const QString& name, QObject *client);
+    QObject *createAndClone(const QString& name, QObject *client);*/
+
 protected:
     bool event(QEvent *e);
+    bool eventFilter(QObject *, QEvent *);
 
 private slots:
     void onDestroyed(QObject *);

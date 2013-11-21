@@ -440,7 +440,10 @@ bool QMetaHost::registerObject(QObject *object)
     bool result = registerMetaClass(meta);
 
     if(result)
+    {
         _localObjects.insert(object, new QObjectList());
+        object->installEventFilter(this);
+    }
 
     return result;
 }
@@ -923,6 +926,20 @@ bool QMetaHost::event(QEvent *e)
     return false;
 }
 
+bool QMetaHost::eventFilter(QObject *o, QEvent *e)
+{
+    if(e->type() == QEvent::DynamicPropertyChange)
+    {
+        QDynamicPropertyChangeEvent *de =
+                dynamic_cast<QDynamicPropertyChangeEvent *>(e);
+        if(de)
+        {
+            qDebug() << "Property" << de->propertyName() << "changed";
+            //TODO: send message of property changing to client/server
+        }
+    }
+}
+
 bool QMetaHost::checkRevision(const QMetaObject *meta)
 {
     const uint *mdata = meta->d.data;
@@ -1108,7 +1125,9 @@ QObject *QMetaHost::getObject(const QString& name, QObject *client)
 		}
 	}
 
-	constructObject(object, meta.classes);
+    if(constructObject(object, meta.classes))
+        object->installEventFilter(this);
+
     return object;
 }
 
