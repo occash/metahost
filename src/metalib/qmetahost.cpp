@@ -23,6 +23,7 @@ USA.
 #include "qtcptransport.h"
 #include "qproxyobject.h"
 #include "qmetaevent.h"
+#include "qobject_p.h"
 
 #include <QMetaObject>
 #include <QDebug>
@@ -36,6 +37,20 @@ USA.
 #include <QObjectList>
 
 #include <iostream>
+
+template<typename Tag, typename Tag::type M>
+struct Rob {
+  friend typename Tag::type get(Tag) {
+    return M;
+  }
+};
+
+struct QObject_p {
+  typedef QScopedPointer<QObjectData> QObject::*type;
+  friend type get(QObject_p);
+};
+
+template struct Rob<QObject_p, &QObject::d_ptr>;
 
 #define HEADER_SIZE sizeof(quint16)
 
@@ -241,7 +256,7 @@ void freeProp(const QMetaObject *meta, int method_index, void **argv)
 
 //******************************Private hooks************************************
 
-struct QSignalSpyCallbackSet
+/*struct QSignalSpyCallbackSet
 {
 	typedef void (*BeginCallback)(QObject *caller, int method_index, void **argv);
 	typedef void (*EndCallback)(QObject *caller, int method_index);
@@ -251,7 +266,7 @@ struct QSignalSpyCallbackSet
 		slot_end_callback;
 };
 
-extern void Q_CORE_EXPORT qt_register_signal_spy_callbacks(const QSignalSpyCallbackSet &);
+extern void Q_CORE_EXPORT qt_register_signal_spy_callbacks(const QSignalSpyCallbackSet &);*/
 
 #include <iostream>
 
@@ -934,10 +949,15 @@ bool QMetaHost::eventFilter(QObject *o, QEvent *e)
                 dynamic_cast<QDynamicPropertyChangeEvent *>(e);
         if(de)
         {
+            QObjectData *ptr = ((*o).*get(QObject_p())).data(); // Doh!
+            QObjectPrivate *ptr_p = dynamic_cast<QObjectPrivate *>(ptr);
+            qDebug() << ptr_p->extraData->propertyNames.at(0);
             qDebug() << "Property" << de->propertyName() << "changed";
             //TODO: send message of property changing to client/server
         }
     }
+
+    return false;
 }
 
 bool QMetaHost::checkRevision(const QMetaObject *meta)

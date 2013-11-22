@@ -39,7 +39,8 @@ HEADERS += \
     qtcptransport.h \
     qmetaevent.h \
     paramholder.h \
-    qzeroconfiguration.h
+    qzeroconfiguration.h \
+    qobject_p.h
 
 include_files.path = $$ROOTDIR/include
 include_files.files = $$HEADERS
