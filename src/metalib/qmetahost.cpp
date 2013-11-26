@@ -152,7 +152,6 @@ bool writeRawProp(QByteArray *ret, const QMetaObject *meta, int method_index, vo
 {
     QDataStream argStream(ret, QIODevice::WriteOnly);
 
-    int paramNumber = 0;
     int local_index = localIndex(&meta, method_index, true);
     uint handle = methodHandle(meta, local_index, true);
     const char *typeName = meta->d.stringdata + meta->d.data[handle + 1];
@@ -160,7 +159,7 @@ bool writeRawProp(QByteArray *ret, const QMetaObject *meta, int method_index, vo
         return false;
 
     int typeId = QMetaType::type(typeName);
-    bool saved = QMetaType::save(argStream, typeId, argv[1]);
+    bool saved = QMetaType::save(argStream, typeId, argv[0]);
 
     if (!saved)
     {
