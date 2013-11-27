@@ -3,7 +3,58 @@
 #include <QDataStream>
 #include <QNetworkInterface>
 
-#include <iostream>
+QZeroService::QZeroService(const QString &name, QObject *parent)
+    : QObject(parent),
+      _name(name)
+{
+}
+
+QZeroService::QZeroService(const QZeroService &other)
+{
+    _name = other._name;
+    _fields = other._fields;
+}
+
+QZeroService QZeroService::operator =(const QZeroService &other)
+{
+    _name = other._name;
+    _fields = other._fields;
+    return *this;
+}
+
+QZeroService::~QZeroService()
+{
+}
+
+QString QZeroService::name() const
+{
+    return _name;
+}
+
+void QZeroService::setName(const QString &name)
+{
+    _name = name;
+}
+
+void QZeroService::insertField(const QString &key, const QVariant &value)
+{
+    _fields.insert(key, value);
+}
+
+void QZeroService::removeField(const QString &key)
+{
+    _fields.remove(key);
+}
+
+const QVariant QZeroService::field(const QString &key) const
+{
+    return _fields.value(key);
+}
+
+QStringList QZeroService::fields() const
+{
+    return _fields.keys();
+}
 
 QZeroConfiguration::QZeroConfiguration(QObject *parent)
     : QObject(parent),
@@ -38,12 +89,28 @@ bool QZeroConfiguration::lookup(const QString& service)
     return ok;
 }
 
-void QZeroConfiguration::addService(const QString& service)
+bool QZeroConfiguration::claim(const QString &service, const QHostAddress &host)
 {
-    if(_services.contains(service))
+    QByteArray datagram;
+    QDataStream stream(&datagram, QIODevice::WriteOnly);
+    stream << (quint8)HasServers;
+    stream << service;
+
+    bool ok = true;
+    int bytes = _socket.writeDatagram(datagram,
+        host, 6566);
+
+    ok &= bytes != -1;
+
+    return ok;
+}
+
+void QZeroConfiguration::addService(const QZeroService& service)
+{
+    if(_services.contains(service.name()))
         return;
 
-    _services.append(service);
+    _services.insert(service.name(), service);
 }
 
 void QZeroConfiguration::listen()
@@ -80,25 +147,35 @@ void QZeroConfiguration::onReadyRead()
 void QZeroConfiguration::dispatchMessage(const QHostAddress& address, quint16 port, 
     const QByteArray& datagram)
 {
-    QDataStream stream(datagram);
+    QDataStream in(datagram);
     quint8 msg = -1;
-    stream >> msg;
-    QString service;
-    stream >> service;
+    in >> msg;
+    QString name;
+    in >> name;
 
     switch(msg)
     {
     case HasServers:
         if(_listen)
         {
-            if(_services.indexOf(service) != -1)
+            if(_services.contains(name))
             {
-                std::cout << "Server has service: " << qPrintable(service) << std::endl;
-
                 QByteArray answer;
-                QDataStream stream(&answer, QIODevice::WriteOnly);
-                stream << (quint8)IAmServer;
-                stream << service;
+                QDataStream out(&answer, QIODevice::WriteOnly);
+
+                QZeroService service = _services.value(name);
+                QStringList fields = service.fields();
+                int fsize = fields.size();
+
+                out << (quint8)IAmServer;
+                out << name;
+                out << fsize;
+
+                foreach(const QString& field, fields)
+                {
+                    out << field;
+                    out << service.field(field);
+                }
 
                 _socket.writeDatagram(answer, address, 6566);
 
@@ -108,7 +185,18 @@ void QZeroConfiguration::dispatchMessage(const QHostAddress& address, quint16 po
         break;
     case IAmServer: 
     {
-        std::cout << "Service found: " << qPrintable(service) << std::endl;
+        QZeroService service(name);
+        int fsize = 0;
+        in >> fsize;
+        for(int i = 0; i < fsize; ++i)
+        {
+            QString field;
+            QVariant value;
+            in >> field;
+            in >> value;
+            service.insertField(field, value);
+        }
+
         emit newService(service, address);
         break;
     }
