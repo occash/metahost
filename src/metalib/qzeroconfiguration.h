@@ -6,7 +6,7 @@
 #include <QStringList>
 #include <QMap>
 #include <QVariant>
-#include "global.h"
+#include "metaglobal.h"
 
 class METAEXPORT QZeroService : public QObject
 {

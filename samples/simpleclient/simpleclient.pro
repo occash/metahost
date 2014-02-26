@@ -1,7 +1,11 @@
 TEMPLATE = app
 
 CONFIG += qt
-QT += core network
+QT += core gui network
+
+greaterThan(QT_MAJOR_VERSION, 4) {
+    QT += widgets
+} 
 
 ROOTDIR = $$PWD/../..
 DEBUGTARGET = simpleclientd

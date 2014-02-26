@@ -22,7 +22,7 @@ USA.
 #ifndef QTCPTRANSPORT_H
 #define QTCPTRANSPORT_H
 
-#include "global.h"
+#include "metaglobal.h"
 
 #include <QObject>
 #include <QList>

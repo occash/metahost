@@ -23,8 +23,11 @@ USA.
 #include "qtcptransport.h"
 #include "qproxyobject.h"
 #include "qmetaevent.h"
+#if (QT_VERSION < QT_VERSION_CHECK(5, 0, 0))
 #include "qobject_p.h"
+#endif
 
+#include <QtGlobal>
 #include <QMetaObject>
 #include <QDebug>
 #include <QDataStream>
@@ -37,6 +40,20 @@ USA.
 #include <QObjectList>
 
 #include <iostream>
+#include <assert.h>
+
+//Define version specific macros
+#if (QT_VERSION < QT_VERSION_CHECK(5, 0, 0))
+#define QT_MALLOC(x) qMalloc(x)
+#define QT_FREE(x) qFree(x)
+#define QT_META_CONSTRUCT(id) QMetaType::construct(id)
+#define QT_META_STRINGDATA(meta) meta->d.stringdata
+#else
+#define QT_MALLOC(x) qMallocAligned(x, 0)
+#define QT_FREE(x) qFreeAligned(x)
+#define QT_META_CONSTRUCT(id) QMetaType::create(id)
+#define QT_META_STRINGDATA(meta) (const char *)((meta)->d.stringdata->data())
+#endif
 
 template<typename Tag, typename Tag::type M>
 struct Rob {
@@ -54,43 +71,131 @@ template struct Rob<QObject_p, &QObject::d_ptr>;
 
 #define HEADER_SIZE sizeof(quint16)
 
+#define MOVE(ptr, size) ptr += size
+
 #define SET(ptr, type, data) \
-    *((type *)ptr) = data;
+    *((type *)ptr) = data
+
+#define GET(ptr, type, data) \
+    data = *((type *)ptr)
 
 #define WRITE(ptr, type, data) \
     *((type *)ptr) = data; \
-    ptr += sizeof(type);
+    ptr += sizeof(type)
+
+#define WRITECHUNK(ptr, data, size) \
+    memcpy(ptr, data, size); \
+    ptr += size
 
 #define COPY(ptr, data, size) \
-    memcpy(ptr, data, size);
+    memcpy(ptr, data, size)
 
 #define READ(ptr, type) \
     *((type *)ptr); \
-    ptr += sizeof(type);
+    ptr += sizeof(type)
 
-int localIndex(const QMetaObject **meta, int method_index, bool prop = false)
+#if Q_MOC_OUTPUT_REVISION == 67
+struct MetaHeader
+{
+    uint revision;
+    uint className;
+    uint classInfoCount;
+    uint classInfoData;
+    uint methodCount;
+    uint methodData;
+    uint propertyCount;
+    uint propertyData;
+    uint enumeratorCount;
+    uint enumeratorData;
+    uint constructorCount;
+    uint constructorData;
+    uint flags;
+    uint signalCount;
+};
+
+struct MetaMethod
+{
+    uint name;
+    uint argc;
+    uint parameters;
+    uint tag;
+    uint flags;
+};
+
+struct MetaProperty
+{
+    uint name;
+    uint type;
+    uint flags;
+};
+
+inline const MetaHeader *header(const uint *data)
+{
+    return reinterpret_cast<const MetaHeader *>(data);
+}
+
+inline uint value(const uint *data, int index)
+{
+    return data[index];
+}
+
+inline uint value(const MetaHeader *head, int index)
+{
+    return (reinterpret_cast<const uint *>(head))[index];
+}
+
+inline const MetaMethod *method(const uint *data, int handle)
+{
+    return reinterpret_cast<const MetaMethod *>(data + handle);
+}
+
+inline const MetaProperty *metaprop(const uint *data, int handle)
+{
+    return reinterpret_cast<const MetaProperty *>(data + handle);
+}
+#endif
+
+uint signalOffset(const QMetaObject *meta)
+{
+    const MetaHeader *h = header(meta->d.data);
+    return h->signalCount;
+}
+
+uint methodOffset(const QMetaObject *meta)
+{
+    const MetaHeader *h = header(meta->d.data);
+    return h->methodCount;
+}
+
+uint propertyOffset(const QMetaObject *meta)
+{
+    const MetaHeader *h = header(meta->d.data);
+    return h->propertyCount;
+}
+
+int local(const QMetaObject **meta, int index, uint (* func)(const QMetaObject *meta))
 {
     //Find methods offset
     int offset = 0;
     const QMetaObject *m = (*meta)->d.superdata;
     while (m) {
-        offset += m->d.data[prop ? 6 : 4];
+        offset += func(m);
         m = m->d.superdata;
     }
 
     //Compute local index
     while(*meta) {
-        if(method_index >= offset)
+        if(index >= offset)
             break;
 
         *meta = (*meta)->d.superdata;
-        offset -= (*meta)->d.data[prop ? 6 : 4];
+        offset -= func(*meta);
     }
 
-    return method_index - offset;
+    return index - offset;
 }
 
-uint methodHandle(const QMetaObject *meta, int local_index, bool prop = false)
+inline uint methodHandle(const QMetaObject *meta, int local_index, bool prop = false)
 {
     return meta->d.data[prop ? 7 : 5] + ((prop ? 3 : 5) * local_index);
 }
@@ -100,7 +205,7 @@ QList<QByteArray> methodArguments(const QMetaObject *meta, uint handle)
     QList<QByteArray> list;
 
     //Find method signature
-    const char *signature = meta->d.stringdata + meta->d.data[handle];
+    const char *signature = QT_META_STRINGDATA(meta) + meta->d.data[handle];
 
     //Parse params
     while (*signature && *signature != '(')
@@ -124,70 +229,93 @@ QList<QByteArray> methodArguments(const QMetaObject *meta, uint handle)
     return list;
 }
 
-bool writeRawParams(QByteArray *ret, const QMetaObject *meta, int method_index, void **argv)
+bool writeRaw(QDataStream& out, int typeId, void *data)
 {
-    QDataStream argStream(ret, QIODevice::WriteOnly);
+    bool saved = QMetaType::save(out, typeId, data);
+    if(!saved)
+        qWarning() << "Cannot write method meta type" << QMetaType::typeName(typeId);
 
-    int paramNumber = 0;
-    int local_index = localIndex(&meta, method_index);
-    uint handle = methodHandle(meta, local_index);
-    foreach(const QByteArray& typeName, methodArguments(meta, handle))
-    {
-        int typeId = QMetaType::type(typeName.constData());
-        bool saved = QMetaType::save(argStream, typeId, argv[paramNumber + 1]);
-
-        if(!saved)
-        {
-            qWarning() << "Cannot read meta type" << typeName;
-            return false;
-        }
-
-        paramNumber++;
-    }
-
-    return true;
+    return saved;
 }
 
-bool writeRawProp(QByteArray *ret, const QMetaObject *meta, int method_index, void **argv)
+bool writeRawParams(QByteArray *ret, const QMetaObject *meta, int handle, void **argv)
 {
     QDataStream argStream(ret, QIODevice::WriteOnly);
+    bool result = true;
 
-    int local_index = localIndex(&meta, method_index, true);
-    uint handle = methodHandle(meta, local_index, true);
-    const char *typeName = meta->d.stringdata + meta->d.data[handle + 1];
+#if Q_MOC_OUTPUT_REVISION == 67
+    const MetaMethod *metaMethod = method(meta->d.data, handle);
+    for(uint i = 0; i < metaMethod->argc; ++i)
+    {
+        int typeId = value(meta->d.data, metaMethod->parameters + i + 1);
+        result &= writeRaw(argStream, typeId, argv[i + 1]);
+    }
+#else
+    QList<QByteArray> args = methodArguments(meta, handle);
+    for(int i = 0; i < args.size(); ++i)
+    {
+        int typeId = QMetaType::type(args.at(i).constData());
+        result &= writeRaw(argStream, typeId, argv[i + 1]);
+    }
+#endif
+
+    return result;
+}
+
+bool writeRawProp(QByteArray *ret, const QMetaObject *meta, int handle, void **argv)
+{
+    QDataStream argStream(ret, QIODevice::WriteOnly);
+    int typeId;
+
+#if Q_MOC_OUTPUT_REVISION == 67
+    const MetaProperty *prop = metaprop(meta->d.data, handle);
+    typeId = prop->type;
+#else
+    const char *typeName = QT_META_STRINGDATA(meta) + meta->d.data[handle + 1];
     if (!typeName)
         return false;
 
-    int typeId = QMetaType::type(typeName);
-    bool saved = QMetaType::save(argStream, typeId, argv[0]);
+    typeId = QMetaType::type(typeName);
+#endif
 
-    if (!saved)
-    {
-        qWarning() << "Cannot read meta type" << typeName;
-        return false;
-    }
-
-    return true;
+    return writeRaw(argStream, typeId, argv[0]);
 }
 
 bool readRawParams(QByteArray *ret, const QMetaObject *meta, uint handle, void **argv)
 {
     QDataStream argStream(ret, QIODevice::ReadOnly);
 
+#if Q_MOC_OUTPUT_REVISION == 67
+    const MetaMethod *metaMethod = method(meta->d.data, handle);
+    for(uint i = 0; i < metaMethod->argc; ++i)
+    {
+        int metaType = value(meta->d.data, metaMethod->parameters + i + 1);
+        argv[i + 1] = QT_META_CONSTRUCT(metaType);
+        bool loaded = QMetaType::load(argStream, metaType, argv[i + 1]);
+
+        if(!loaded)
+        {
+            qWarning() << "Cannot read method meta type" << QMetaType::typeName(metaType);
+            return false;
+        }
+    }
+#else
     int paramNumber = 0;
+
     foreach(const QByteArray& typeName, methodArguments(meta, handle))
     {
         int typeId = QMetaType::type(typeName.constData());
-        argv[paramNumber + 1] = QMetaType::construct(typeId);
+        argv[paramNumber + 1] = QT_META_CONSTRUCT(typeId);
         bool loaded = QMetaType::load(argStream, typeId, argv[paramNumber + 1]);
         if(!loaded)
         {
-            qWarning() << "Cannot load meta type" << typeName;
+            qWarning() << "Cannot read method meta type" << typeName;
             return false;
         }
 
         paramNumber++;
     }
+#endif
 
     return true;
 }
@@ -199,7 +327,7 @@ bool readRawProp(QByteArray *ret, int typeId, void **argv)
     bool loaded = QMetaType::load(argStream, typeId, argv[0]);
     if (!loaded)
     {
-        qWarning() << "Cannot load meta type" << QMetaType::typeName(typeId);
+        qWarning() << "Cannot read property meta type" << QMetaType::typeName(typeId);
         return false;
     }
 
@@ -210,9 +338,32 @@ bool readRawReturn(QByteArray *ret, const QMetaObject *meta, int method_index, v
 {
     QDataStream argStream(ret, QIODevice::ReadOnly);
 
-    int local_index = localIndex(&meta, method_index, prop);
+    int local_index = local(&meta, method_index, prop ? propertyOffset : methodOffset);
     uint handle = methodHandle(meta, local_index, prop);
-    const char *retName = meta->d.stringdata + meta->d.data[handle + (prop ? 1 : 2)];
+
+#if Q_MOC_OUTPUT_REVISION == 67
+    int metaType = QMetaType::Void;
+    if(prop)
+    {
+        const MetaProperty *metaProperty = metaprop(meta->d.data, handle);
+        metaType = metaProperty->type;
+    }
+    else
+    {
+        const MetaMethod *metaMethod = method(meta->d.data, handle);
+        metaType = value(meta->d.data, metaMethod->parameters);
+    }
+    if(metaType != QMetaType::Void)
+    {
+        bool loaded = QMetaType::load(argStream, metaType, argv);
+        if(!loaded)
+        {
+            qWarning() << "Cannot read returned meta type" << QMetaType::typeName(metaType);
+            return false;
+        }
+    }
+#else
+    const char *retName = QT_META_STRINGDATA(meta) + meta->d.data[handle + (prop ? 1 : 2)];
 
     if(retName)
     {
@@ -224,28 +375,39 @@ bool readRawReturn(QByteArray *ret, const QMetaObject *meta, int method_index, v
             return false;
         }
     }
+#endif
 
     return true;
 }
 
 void freeParams(const QMetaObject *meta, int method_index, void **argv)
 {
-    int paramNumber = 0;
-    int local_index = localIndex(&meta, method_index);
+    int local_index = local(&meta, method_index, methodOffset);
     uint handle = methodHandle(meta, local_index);
+
+#if Q_MOC_OUTPUT_REVISION == 67
+    const MetaMethod *metaMethod = method(meta->d.data, handle);
+    for(uint i = 0; i < metaMethod->argc; ++i)
+    {
+        int metaType = value(meta->d.data, metaMethod->parameters + i + 1);
+        QMetaType::destroy(metaType, argv[i + 1]);
+    }
+#else
+    int paramNumber = 0;
     foreach(const QByteArray& typeName, methodArguments(meta, handle))
     {
         int typeId = QMetaType::type(typeName.constData());
         QMetaType::destroy(typeId, argv[paramNumber + 1]);
         paramNumber++;
     }
+#endif
 }
 
 void freeProp(const QMetaObject *meta, int method_index, void **argv)
 {
-    int local_index = localIndex(&meta, method_index);
+    int local_index = local(&meta, method_index, methodOffset);
     uint handle = methodHandle(meta, local_index);
-    const char *typeName = meta->d.stringdata + meta->d.data[handle + 1];
+    const char *typeName = QT_META_STRINGDATA(meta) + meta->d.data[handle + 1];
     if (!typeName)
         return;
 
@@ -255,7 +417,7 @@ void freeProp(const QMetaObject *meta, int method_index, void **argv)
 
 //******************************Private hooks************************************
 
-/*struct QSignalSpyCallbackSet
+struct QSignalSpyCallbackSet
 {
 	typedef void (*BeginCallback)(QObject *caller, int method_index, void **argv);
 	typedef void (*EndCallback)(QObject *caller, int method_index);
@@ -265,9 +427,7 @@ void freeProp(const QMetaObject *meta, int method_index, void **argv)
 		slot_end_callback;
 };
 
-extern void Q_CORE_EXPORT qt_register_signal_spy_callbacks(const QSignalSpyCallbackSet &);*/
-
-#include <iostream>
+extern void Q_CORE_EXPORT qt_register_signal_spy_callbacks(const QSignalSpyCallbackSet &);
 
 void QMetaHost::hostCallback(QObject *caller, int method_index, void **argv)
 {
@@ -286,7 +446,10 @@ void QMetaHost::hostCallback(QObject *caller, int method_index, void **argv)
     //Write arguments using Qt meta system
     QByteArray argData;
     const QMetaObject *metaObject = caller->metaObject();
-    if(!writeRawParams(&argData, metaObject, method_index, argv))
+    int local_index = local(&metaObject, method_index, signalOffset);
+    uint handle = methodHandle(metaObject, local_index);
+
+    if(!writeRawParams(&argData, metaObject, handle, argv))
         return;
 
     //Adjust message size to store arguments
@@ -351,18 +514,24 @@ int QMetaHost::invokeRemoteMethod(QObject *_o, QMetaObject::Call _c, int _id, vo
     QByteArray argData;
     const QMetaObject *meta = _o->metaObject();
 
+    //decide whether it is property or method
+    bool prop = (_c > QMetaObject::InvokeMetaMethod &&
+        _c < QMetaObject::CreateInstance);
+    int local_index = local(&meta, _id, prop ? propertyOffset : methodOffset);
+    uint handle = methodHandle(meta, local_index, prop);
+
     if (_c == QMetaObject::InvokeMetaMethod)
     {
-        if (!writeRawParams(&argData, meta, _id, _a))
+        if (!writeRawParams(&argData, meta, handle, _a))
             return 1;
     }
     else if (_c == QMetaObject::WriteProperty)
     {
-        if (!writeRawProp(&argData, meta, _id, _a))
+        if (!writeRawProp(&argData, meta, handle, _a))
             return 1;
     }
-    //Else no params
 
+    //Else no params
     answerSize += argData.size();
 
     //Allocate memory for answer
@@ -376,10 +545,10 @@ int QMetaHost::invokeRemoteMethod(QObject *_o, QMetaObject::Call _c, int _id, vo
     //Set qt_meta_call raw params
     WRITE(ptr, quint32, (*o).id);
     WRITE(ptr, QMetaObject::Call, _c);
-    WRITE(ptr, int, _id)
+    WRITE(ptr, int, _id);
 
     //Check size on remote side!!
-    SET(ptr, quint16, 0);
+    SET(ptr, quint16, quint16(0));
 
     if(argData.size() > 0)
     {
@@ -495,7 +664,7 @@ void QMetaHost::processQueryObjectInfo(QObject *client, char *data, char **answe
             object->metaObject());
         while(meta)
         {
-            answerSize += strlen(meta->d.stringdata) + 1;
+            answerSize += strlen(QT_META_STRINGDATA(meta)) + 1;
             meta = const_cast<QMetaObject *>(meta->d.superdata);
         }
     }
@@ -506,21 +675,14 @@ void QMetaHost::processQueryObjectInfo(QObject *client, char *data, char **answe
     char *ptr = *answer;
 
     //Set header size
-    *((quint16 *)ptr) = answerSize;
-    ptr += sizeof(quint16);
-
+    WRITE(ptr, quint16, answerSize);
     //Set header type
-    quint8 type = ReturnObjectInfo;
-    *((quint8 *)ptr) = type;
-    ptr += sizeof(quint8);
-
+    quint8 answerType = ReturnObjectInfo;
+    WRITE(ptr, quint8, answerType);
     //Set name of object
-    memcpy(ptr, data, objectName.size() + 1);
-    ptr += objectName.size() + 1;
-
+    WRITECHUNK(ptr, data, objectName.size() + 1);
     //Set generated object id
-    *((quint32 *)ptr) = id;
-    ptr += sizeof(quint32);
+    WRITE(ptr, quint32, id);
 
     //Set class names related to object
     if(object)
@@ -529,24 +691,26 @@ void QMetaHost::processQueryObjectInfo(QObject *client, char *data, char **answe
             object->metaObject());
         while(meta)
         {
-            int len = strlen(meta->d.stringdata) + 1;
-            memcpy(ptr, meta->d.stringdata, len);
-            ptr += len;
+            const char *className = QT_META_STRINGDATA(meta);
+            int nameLength = strlen(className) + 1;
+            WRITECHUNK(ptr, className, nameLength);
             meta = const_cast<QMetaObject *>(meta->d.superdata);
         }
     }
 
     //Add terminating zero
-    *ptr = '\0';
+    SET(ptr, char, '\0');
 }
 
 void QMetaHost::processReturnObjectInfo(QObject *client, char *data, char **answer)
 {
     QString objectName(data);
     char *ptr = data;
-    ptr += objectName.size() + 1;
     *answer = 0;
-    quint32 id = *((quint32 *)ptr);
+
+    MOVE(ptr, objectName.size() + 1);
+    quint32 id;
+    GET(ptr, quint32, id);
     //Remote side didn't found object
     if(!id)
         return;
@@ -556,7 +720,7 @@ void QMetaHost::processReturnObjectInfo(QObject *client, char *data, char **answ
     objectMeta.id = id;
     objectMeta.qualified = true;
     objectMeta.client = client;
-    ptr += sizeof(quint32);
+    MOVE(ptr, sizeof(quint32));
 
     //Traverse through class names required to build object
     //and decide if object is fully qualified
@@ -666,8 +830,13 @@ void QMetaHost::processReturnClassInfo(QObject *client, char *data, char **answe
     quint16 stringSize = *((quint16 *)data);
     classMeta.stringSize = stringSize;
     data += sizeof(quint16);
-    classInfo->d.stringdata = new char[stringSize];
-    memcpy((void *)classInfo->d.stringdata, data, stringSize);
+    char *newData = new char[stringSize];
+#if Q_MOC_OUTPUT_REVISION == 67
+    classInfo->d.stringdata = (QByteArrayData *)newData;
+#else
+    classInfo->d.stringdata = newData;
+#endif
+    memcpy(newData, data, stringSize);
     data += stringSize;
 
     classMeta.metaObject = classInfo;
@@ -691,24 +860,24 @@ void QMetaHost::processEmitSignal(QObject *client, char *data, char **answer)
     int method_index = READ(data, int);
     const QMetaObject *meta = (*o)->metaObject();
     const QMetaObject *m = meta;
-    int local_index = localIndex(&m, method_index);
+    int local_index = local(&m, method_index, signalOffset);
+    uint handle = methodHandle(m, local_index);
 
     //Allocate memory for raw params (max 10 arguments for call)
-    void **argv = (void **)qMalloc(10 * sizeof(void *));
+    void **argv = (void **)QT_MALLOC(10 * sizeof(void *));
 
     //Signal never returns, so left field blank
-    memset(argv, 0, 10);
+    memset(argv, 0, 10 * sizeof(void *));
 
     //Read raw argument data and fill argv
     quint16 dataSize = *((quint16 *)data);
     data += sizeof(quint16);
 
     QByteArray argData = QByteArray::fromRawData(data, dataSize);
-    uint handle = methodHandle(m, local_index);
-    if(!readRawParams(&argData, meta, handle, argv))
+    if(!readRawParams(&argData, m, handle, argv))
     {
         freeParams(meta, method_index, argv);
-        qFree(argv);
+        QT_FREE(argv);
         return;
     }
     
@@ -717,7 +886,7 @@ void QMetaHost::processEmitSignal(QObject *client, char *data, char **answer)
 
     //deallocate params
     freeParams(meta, method_index, argv);
-    qFree(argv);
+    QT_FREE(argv);
 }
 
 void QMetaHost::processCallMetaMethod(QObject *client, char *data, char **answer)
@@ -748,24 +917,49 @@ void QMetaHost::processCallMetaMethod(QObject *client, char *data, char **answer
     bool writeProp = (c == QMetaObject::WriteProperty);
 
     //Allocate memory for raw params
-    int local_index = localIndex(&m, id, prop);
+    int local_index = local(&m, id, prop ? propertyOffset : methodOffset);
     int handle = methodHandle(m, local_index, prop);
 
+#if Q_MOC_OUTPUT_REVISION == 67
+    int arrayLen = 1;
+    int typeId = QMetaType::Void;
+    const MetaMethod *metaMethod = nullptr;
+    const MetaProperty *metaProperty = nullptr;
+
+    if(prop)
+    {
+        metaProperty = metaprop(meta->d.data, handle);
+        typeId = metaProperty->type;
+    }
+    else
+    {
+        metaMethod = method(meta->d.data, handle);
+        arrayLen += metaMethod->argc + 1;
+        typeId = value(meta->d.data, metaMethod->parameters);
+    }
+
+    void **argv = (void **)QT_MALLOC(arrayLen * sizeof(void *));
+    memset(argv, 0, arrayLen * sizeof(void *));
+        
+    if(typeId != QMetaType::Void)
+        argv[0] = QT_META_CONSTRUCT(typeId);
+#else
     QList<QByteArray> paramTypes;
     if(!prop)
         paramTypes = methodArguments(meta, handle);
     int arrayLen = paramTypes.size() + 1;
-    void **argv = (void **)qMalloc(arrayLen * sizeof(void *));
+    void **argv = (void **)QT_MALLOC(arrayLen * sizeof(void *));
     memset(argv, 0, arrayLen * sizeof(void *));
     
-    const char *retName = m->d.stringdata + m->d.data[handle + (prop ? 1 : 2)];
+    const char *retName = QT_META_STRINGDATA(meta) + m->d.data[handle + (prop ? 1 : 2)];
 
     int typeId = QMetaType::Void;
     if(retName)
     {
         typeId = QMetaType::type(retName);
-        argv[0] = QMetaType::construct(typeId);
+        argv[0] = QT_META_CONSTRUCT(typeId);
     }
+#endif
 
     //Read raw parameters
     quint16 dataSize = READ(data, quint16);
@@ -777,7 +971,7 @@ void QMetaHost::processCallMetaMethod(QObject *client, char *data, char **answer
             prepareReturnMetaMethod(reinterpret_cast<quint32>(object), c, id,
                 nullptr, QMetaType::Void, 1, answer);
             freeParams(meta, id, argv);
-            qFree(argv);
+            QT_FREE(argv);
             return;
         }
     }
@@ -788,7 +982,7 @@ void QMetaHost::processCallMetaMethod(QObject *client, char *data, char **answer
             prepareReturnMetaMethod(reinterpret_cast<quint32>(object), c, id,
                 nullptr, QMetaType::Void, 1, answer);
             freeProp(meta, id, argv);
-            qFree(argv);
+            QT_FREE(argv);
             return;
         }
     }
@@ -803,7 +997,11 @@ void QMetaHost::processCallMetaMethod(QObject *client, char *data, char **answer
         freeProp(meta, id, argv);
     else if (!prop)
         freeParams(meta, id, argv);
-    qFree(argv);
+
+    if(typeId != QMetaType::Void)
+        QMetaType::destroy(typeId, argv[0]);
+
+    QT_FREE(argv);
 }
 
 void QMetaHost::prepareReturnMetaMethod(quint32 o, QMetaObject::Call c, 
@@ -843,7 +1041,7 @@ void QMetaHost::prepareReturnMetaMethod(quint32 o, QMetaObject::Call c,
     if(argData.size() > 0)
     {
         //Set raw data size
-        WRITE(ptr, quint16, argData.size())
+        WRITE(ptr, quint16, argData.size());
 
         //Copy raw parameters data
         COPY(ptr, argData.data(), argData.size());
@@ -948,10 +1146,10 @@ bool QMetaHost::eventFilter(QObject *o, QEvent *e)
                 dynamic_cast<QDynamicPropertyChangeEvent *>(e);
         if(de)
         {
-            QObjectData *ptr = ((*o).*get(QObject_p())).data(); // Doh!
+            /*QObjectData *ptr = ((*o).*get(QObject_p())).data(); // Doh!
             QObjectPrivate *ptr_p = dynamic_cast<QObjectPrivate *>(ptr);
             qDebug() << ptr_p->extraData->propertyNames.at(0);
-            qDebug() << "Property" << de->propertyName() << "changed";
+            qDebug() << "Property" << de->propertyName() << "changed";*/
             //TODO: send message of property changing to client/server
         }
     }
@@ -961,10 +1159,9 @@ bool QMetaHost::eventFilter(QObject *o, QEvent *e)
 
 bool QMetaHost::checkRevision(const QMetaObject *meta)
 {
-    const uint *mdata = meta->d.data;
-    quint32 revision = mdata[0];
-    if(revision != 6) {
-        qDebug() << "Error: QMetaHost only compatible with revision 6.";
+    quint32 revision = header(meta->d.data)->revision;
+    if(!(revision == 6 || revision == 7)) {
+        qDebug() << "Error: QMetaHost only compatible with revision 6 or 7.";
         return false;
     }
 
@@ -973,35 +1170,47 @@ bool QMetaHost::checkRevision(const QMetaObject *meta)
 
 QString QMetaHost::metaName(const QMetaObject *meta)
 {
-    const uint *mdata = meta->d.data;
-    const char *msdata = meta->d.stringdata;
-
-    QString metaName = msdata + mdata[1];
-
-    return metaName;
+#if Q_MOC_OUTPUT_REVISION == 67
+    quint32 handle = header(meta->d.data)->className;
+    return (const char *)meta->d.stringdata[handle].data();
+#else
+    const char *msdata = QT_META_STRINGDATA(meta);
+    return msdata + header(meta->d.data)->className;
+#endif
 }
 
 quint16 QMetaHost::computeMetaStringSize(const QMetaObject *meta)
 {
+    Q_ASSERT(meta->d.data != NULL);
+    Q_ASSERT(meta->d.stringdata != NULL);
+
+    const char *lastChar = NULL;
+
+#if Q_MOC_OUTPUT_REVISION == 67
+    int dataOffset = meta->d.stringdata[0].offset;
+    int dataNumber = dataOffset / sizeof(QByteArrayData);
+
+    lastChar = (char *)meta->d.stringdata + dataOffset;
+    for(int i = 0; i < dataNumber; ++i)
+    {
+        if(meta->d.stringdata[i].data() > lastChar)
+            lastChar = (char *)meta->d.stringdata[i].data();
+    }
+#else
     const uint *mdata = meta->d.data;
-    if(!mdata)
-        return -1;
-
-    char *msdata = const_cast<char *>(meta->d.stringdata);
-    if(!msdata)
-        return -1;
-
-    char *lastChar = msdata;
-
+    const char *msdata = QT_META_STRINGDATA(meta);
+    const MetaHeader *head = header(mdata);
+    
+    lastChar = msdata;
+    
     {//Class name
-        uint classShift = mdata[1];
-        if(msdata + classShift > lastChar)
-            lastChar = msdata + classShift;
+        if(msdata + head->className > lastChar)
+            lastChar = msdata + head->className;
     }
 
     {//Class info
-        uint cinum = mdata[2];
-        uint cishift = mdata[3];
+        uint cinum = head->classInfoCount;
+        uint cishift = head->classInfoData;
         for(uint i = 0; i < cinum; ++i) {
             uint cikey = mdata[cishift + i];
             uint cival = mdata[cishift + i + 1];
@@ -1013,11 +1222,11 @@ quint16 QMetaHost::computeMetaStringSize(const QMetaObject *meta)
     }
 
     {//Class methods
-        uint cmnum = mdata[4];
-        uint cmshift = mdata[5];
+        uint cmnum = head->methodCount;
+        uint cmshift = head->methodData;
         for(uint i = 0; i < cmnum; ++i) {
             for(uint j = 0; j < 4; ++j) {
-                char *cmsdata = msdata + mdata[cmshift + i * 5 + j];
+                const char *cmsdata = msdata + mdata[cmshift + i * 5 + j];
                 if(cmsdata > lastChar)
                     lastChar = cmsdata;
             }
@@ -1025,11 +1234,11 @@ quint16 QMetaHost::computeMetaStringSize(const QMetaObject *meta)
     }
 
     {//Class properties
-        uint cpnum = mdata[6];
-        uint cpshift = mdata[7];
+        uint cpnum = head->propertyCount;
+        uint cpshift = head->propertyData;
         for(uint i = 0; i < cpnum; ++i) {
             for(uint j = 0; j < 2; ++j) {
-                char *cpsdata = msdata + mdata[cpshift + i * 3 + j];
+                const char *cpsdata = msdata + mdata[cpshift + i * 3 + j];
                 if(cpsdata > lastChar)
                     lastChar = cpsdata;
             }
@@ -1037,17 +1246,17 @@ quint16 QMetaHost::computeMetaStringSize(const QMetaObject *meta)
     }
 
     {//Class enums/sets
-        uint cenum = mdata[8];
-        uint ceshift = mdata[9];
+        uint cenum = head->enumeratorCount;
+        uint ceshift = head->enumeratorData;
         for(uint i = 0; i < cenum; ++i) {
-            char *cename = msdata + mdata[ceshift + i * 4];
+            const char *cename = msdata + mdata[ceshift + i * 4];
             if(cename > lastChar)
                 lastChar = cename;
 
             uint cecount = mdata[ceshift + i * 4 + 2];
             uint cedata = mdata[ceshift + i * 4 + 3];
             for(uint j = 0; j < cecount; ++j) {
-                char *ceval = msdata + mdata[cedata + j * 2];
+                const char *ceval = msdata + mdata[cedata + j * 2];
                 if(ceval > lastChar)
                     lastChar = ceval;
             }
@@ -1055,39 +1264,55 @@ quint16 QMetaHost::computeMetaStringSize(const QMetaObject *meta)
     }
 
     {//Class constructors
-        uint ccnum = mdata[10];
-        uint ccshift = mdata[11];
+        uint ccnum = head->constructorCount;
+        uint ccshift = head->constructorData;
         for(uint i = 0; i < ccnum; ++i) {
             for(uint j = 0; j < 4; ++j) {
-                char *ccsdata = msdata + mdata[ccshift + i * 5 + j];
+                const char *ccsdata = msdata + mdata[ccshift + i * 5 + j];
                 if(ccsdata > lastChar)
                     lastChar = ccsdata;
             }
         }
     }
+#endif
 
     if(*lastChar) while(*lastChar++);
+
+#if Q_MOC_OUTPUT_REVISION == 67
+    return lastChar - (char *)meta->d.stringdata;
+#else
     return lastChar - msdata + 1;
+#endif
 }
 
 quint16 QMetaHost::computeMetaDataSize(const QMetaObject *meta)
 {
-    const uint *mdata = meta->d.data;
+    const MetaHeader *head = header(meta->d.data);
 
-    uint revision = mdata[0];
-    if(revision != 6)
-        return 0;
-
-    int metaSize = 15; //meta info + eod
-    metaSize += mdata[2] * 2; //class info
-    metaSize += mdata[4] * 5; //class methods
-    metaSize += mdata[6] * 3; //class properties
-    metaSize += mdata[8] * 4; //class enums
-    uint eshift = mdata[9];
-    for(uint i = 0; i < mdata[8]; ++i) {
-        metaSize += mdata[eshift + i * 4 + 2] * 2; //class enum flags
+    quint16 metaSize = 15; //meta info + eod
+    metaSize += head->classInfoCount * 2; //class info
+    metaSize += head->methodCount * 5; //class methods
+    metaSize += head->propertyCount * 3; //class properties
+    metaSize += head->enumeratorCount * 4; //class enums
+    uint eshift = head->enumeratorData;
+    for(uint i = 0; i < head->enumeratorCount; ++i) {
+        metaSize += value(head, eshift + i * 4 + 2) * 2; //class enum flags
     }
-    metaSize += mdata[10] * 5; //class constructors
+    metaSize += head->constructorCount * 5; //class constructors
+
+#if Q_MOC_OUTPUT_REVISION == 67
+    metaSize += head->methodCount; //Return type
+    for(uint i = 0; i < head->methodCount; ++i)
+    {
+        metaSize += value(head, head->methodData + 5 * i + 1) * 2; //Param types + names
+    }
+    metaSize += head->propertyCount;
+    metaSize += head->constructorCount;
+    for (uint i = 0; i < head->constructorCount; ++i)
+    {
+        metaSize += value(head, head->constructorData + i * 5 + 1) * 2;
+    }
+#endif
 
     return metaSize;
 }
@@ -1150,25 +1375,19 @@ QObject *QMetaHost::getObject(const QString& name, QObject *client)
     return object;
 }
 
-void QMetaHost::prepareQuery(char *data, char **answer, quint8 type)
+void QMetaHost::prepareQuery(char *data, char **answer, quint8 packetType)
 {
     //Send query object message
-    int szlen = sizeof(quint16); //size of packet
-    int tplen = sizeof(quint8); //size of type in header
-    char *name = data;
-    int nlen = strlen(name) + 1;
-    quint64 msglen = szlen + tplen + nlen;
-    quint16 packlen = tplen + nlen;
+    int dataLength = strlen(data) + 1;
+    quint16 packetSize = sizeof(quint8) + dataLength;
 
-    char *msg = new char[msglen];
+    char *msg = new char[packetSize + sizeof(quint16)];
     char *ptr = msg;
 
     //Copy data to msg
-    *((quint16 *)ptr) = packlen;
-    ptr += szlen;
-    *((quint8 *)ptr) = type;
-    ptr += tplen;
-    memcpy(ptr, name, nlen);
+    WRITE(ptr, quint16, packetSize);
+    WRITE(ptr, quint8, packetType);
+    COPY(ptr, data, dataLength);
 
     *answer = msg;
 }

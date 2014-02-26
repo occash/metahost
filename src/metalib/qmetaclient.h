@@ -23,7 +23,7 @@ USA.
 #define QMETACLIENT_H
 
 #include <QObject>
-#include "global.h"
+#include "metaglobal.h"
 
 class QIODevice;
 class QMetaHost;

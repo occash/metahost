@@ -19,8 +19,8 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307,
 USA.
 **********************************************************************/
 
-#ifndef GLOBAL_H
-#define GLOBAL_H
+#ifndef METAGLOBAL_H
+#define METAGLOBAL_H
 
 #include <QtGlobal>
 
@@ -30,4 +30,4 @@ USA.
 #define METAEXPORT Q_DECL_IMPORT
 #endif
 
-#endif // GLOBAL_H
+#endif // METAGLOBAL_H

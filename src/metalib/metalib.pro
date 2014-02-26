@@ -34,7 +34,7 @@ HEADERS += \
     qproxyobject.h \
     qmetahost.h \
     proto.h \
-    global.h \
+    metaglobal.h \
     qmetaclient.h \
     qtcptransport.h \
     qmetaevent.h \

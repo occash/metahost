@@ -22,7 +22,7 @@ USA.
 #ifndef QMETAHOST_H
 #define QMETAHOST_H
 
-#include "global.h"
+#include "metaglobal.h"
 #include "proto.h"
 #include "paramholder.h"
 

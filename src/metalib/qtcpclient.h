@@ -1,7 +1,7 @@
 #ifndef QTCPCLIENT_H
 #define QTCPCLIENT_H
 
-#include "global.h"
+#include "metaglobal.h"
 #include "qmetaclient.h"
 
 #include <QAbstractSocket>

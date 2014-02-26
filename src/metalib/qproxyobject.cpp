@@ -25,6 +25,12 @@ USA.
 #include <QDebug>
 #include <QMetaObject>
 
+#if (QT_VERSION < QT_VERSION_CHECK(5, 0, 0))
+    #define METASTRING(x) x->d.stringdata
+#else
+    #define METASTRING(x) ((char*)x->d.stringdata->data())
+#endif
+
 QProxyObject::QProxyObject(QMetaHost *host, QObject *parent) :
     QObject(parent),
     _meta(nullptr),
@@ -44,7 +50,7 @@ void *QProxyObject::qt_metacast(const char *_clname)
     const QMetaObject *meta = _meta;
     while(meta)
     {
-        if (!strcmp(_clname, meta->d.stringdata))
+        if (!strcmp(_clname, METASTRING(meta)))
             return static_cast<void *>(const_cast<QProxyObject *>(this));
 
         meta = meta->d.superdata;

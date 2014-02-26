@@ -13,6 +13,7 @@ ServertWidget::ServertWidget()
 	QVBoxLayout *layout = new QVBoxLayout(this);
 	button = new QPushButton("Click", this);
     button->setObjectName("ServerButton");
+    button->setDefault(true);
 	layout->addWidget(button);
 	setLayout(layout);
     test = new MocTest(this);

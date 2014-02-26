@@ -16,6 +16,7 @@ ClientWidget::ClientWidget()
 	QVBoxLayout *layout = new QVBoxLayout(this);
 	ipAddress = new QLineEdit(this);
 	button = new QPushButton("Connect", this);
+    button->setDefault(true);
 	layout->addWidget(ipAddress);
 	layout->addWidget(button);
 	setLayout(layout);
