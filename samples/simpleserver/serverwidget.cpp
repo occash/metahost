@@ -19,7 +19,7 @@ ServertWidget::ServertWidget()
     test = new MocTest(this);
     test->setObjectName("TestObject");
     test->setString("Ololo");
-    connect(test, SIGNAL(stringChanged()), this, SLOT(onPropChange));
+    connect(test, SIGNAL(stringChanged()), this, SLOT(onPropChange()));
 
 	//Create host
 	server = new QTcpServer(this);
