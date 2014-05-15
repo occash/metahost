@@ -302,13 +302,17 @@ bool readRawParams(QByteArray *ret, const QMetaObject *meta, uint handle, void *
     const MetaMethod *metaMethod = method(meta->d.data, handle);
     for(uint i = 0; i < metaMethod->argc; ++i)
     {
-        int metaType = value(meta->d.data, metaMethod->parameters + i + 1);
-        argv[i + 1] = QT_META_CONSTRUCT(metaType);
-        bool loaded = QMetaType::load(argStream, metaType, argv[i + 1]);
+        int typeId = value(meta->d.data, metaMethod->parameters + i + 1);
+        if(typeId & IsUnresolvedType) {
+            const char *typeName = (const char *)meta->d.stringdata[typeId & TypeNameIndexMask].data();
+            typeId = QMetaType::type(typeName);
+        }
+        argv[i + 1] = QT_META_CONSTRUCT(typeId);
+        bool loaded = QMetaType::load(argStream, typeId, argv[i + 1]);
 
         if(!loaded)
         {
-            qWarning() << "Cannot read method meta type" << QMetaType::typeName(metaType);
+            qWarning() << "Cannot read method meta type" << QMetaType::typeName(typeId);
             return false;
         }
     }
@@ -333,9 +337,18 @@ bool readRawParams(QByteArray *ret, const QMetaObject *meta, uint handle, void *
     return true;
 }
 
-bool readRawProp(QByteArray *ret, int typeId, void **argv)
+bool readRawProp(QByteArray *ret, const QMetaObject *meta, uint handle, void **argv)
 {
     QDataStream argStream(ret, QIODevice::ReadOnly);
+    int typeId;
+
+    const MetaProperty *prop = metaprop(meta->d.data, handle);
+    typeId = prop->type;
+
+    if(typeId & IsUnresolvedType) {
+        const char *typeName = (const char *)meta->d.stringdata[typeId & TypeNameIndexMask].data();
+        typeId = QMetaType::type(typeName);
+    }
 
     bool loaded = QMetaType::load(argStream, typeId, argv[0]);
     if (!loaded)
@@ -920,6 +933,14 @@ void QMetaHost::processCallMetaMethod(QObject *client, char *data, char **answer
     QMetaObject::Call c = READ(data, QMetaObject::Call);
     int id = READ(data, int);
 
+    if(c == QMetaObject::RegisterMethodArgumentMetaType ||
+        c == QMetaObject::RegisterPropertyMetaType)
+    {
+        prepareReturnMetaMethod(reinterpret_cast<quint32>(object), c, id,
+            nullptr, QMetaType::Void, 1, answer);
+        return; //Send no such method
+    }
+
     auto o = _localObjects.find(object);
     if(o == _localObjects.end()) 
     {
@@ -997,7 +1018,7 @@ void QMetaHost::processCallMetaMethod(QObject *client, char *data, char **answer
     }
     if (writeProp)
     {
-        if (!readRawProp(&argData, typeId, argv))
+        if (!readRawProp(&argData, meta, handle, argv))
         {
             prepareReturnMetaMethod(reinterpret_cast<quint32>(object), c, id,
                 nullptr, QMetaType::Void, 1, answer);
