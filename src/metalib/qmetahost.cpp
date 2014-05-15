@@ -129,6 +129,11 @@ struct MetaProperty
     uint flags;
 };
 
+enum MetaDataFlags {
+    IsUnresolvedType = 0x80000000,
+    TypeNameIndexMask = 0x7FFFFFFF
+};
+
 inline const MetaHeader *header(const uint *data)
 {
     return reinterpret_cast<const MetaHeader *>(data);
@@ -248,8 +253,8 @@ bool writeRawParams(QByteArray *ret, const QMetaObject *meta, int handle, void *
     for(uint i = 0; i < metaMethod->argc; ++i)
     {
         int typeId = value(meta->d.data, metaMethod->parameters + i + 1);
-        if(!QMetaType::isRegistered(typeId)) {
-            const char *typeName = QT_META_STRINGDATA(meta) + prop->name;
+        if(typeId & IsUnresolvedType) {
+            const char *typeName = (const char *)meta->d.stringdata[typeId & TypeNameIndexMask].data();
             typeId = QMetaType::type(typeName);
         }
         result &= writeRaw(argStream, typeId, argv[i + 1]);
@@ -274,8 +279,8 @@ bool writeRawProp(QByteArray *ret, const QMetaObject *meta, int handle, void **a
 #if Q_MOC_OUTPUT_REVISION == 67
     const MetaProperty *prop = metaprop(meta->d.data, handle);
     typeId = prop->type;
-    if(!QMetaType::isRegistered(typeId)) {
-        const char *typeName = QT_META_STRINGDATA(meta) + prop->name;
+    if(typeId & IsUnresolvedType) {
+        const char *typeName = (const char *)meta->d.stringdata[typeId & TypeNameIndexMask].data();
         typeId = QMetaType::type(typeName);
     }
 #else
@@ -512,6 +517,13 @@ bool QMetaHost::_initSpy = QMetaHost::initSignalSpy();
 
 int QMetaHost::invokeRemoteMethod(QObject *_o, QMetaObject::Call _c, int _id, void **_a)
 {
+    if(_c == QMetaObject::RegisterMethodArgumentMetaType ||
+        _c == QMetaObject::RegisterPropertyMetaType)
+    {
+        qDebug() << "Register types before calling to qt_metacall";
+        return 1;
+    }
+
     auto o = _remoteObjects.find(_o);
     if(o == _remoteObjects.end())
         return 1;
