@@ -34,6 +34,7 @@ class METAEXPORT QMetaClient : public QObject
 public:
     QMetaClient(QMetaHost *host, QObject *parent = 0);
 
+    //Takes ownership over device
     void setDevice(QIODevice *d);
     QIODevice *device() const;
 

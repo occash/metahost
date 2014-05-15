@@ -248,6 +248,10 @@ bool writeRawParams(QByteArray *ret, const QMetaObject *meta, int handle, void *
     for(uint i = 0; i < metaMethod->argc; ++i)
     {
         int typeId = value(meta->d.data, metaMethod->parameters + i + 1);
+        if(!QMetaType::isRegistered(typeId)) {
+            const char *typeName = QT_META_STRINGDATA(meta) + prop->name;
+            typeId = QMetaType::type(typeName);
+        }
         result &= writeRaw(argStream, typeId, argv[i + 1]);
     }
 #else
@@ -270,6 +274,10 @@ bool writeRawProp(QByteArray *ret, const QMetaObject *meta, int handle, void **a
 #if Q_MOC_OUTPUT_REVISION == 67
     const MetaProperty *prop = metaprop(meta->d.data, handle);
     typeId = prop->type;
+    if(!QMetaType::isRegistered(typeId)) {
+        const char *typeName = QT_META_STRINGDATA(meta) + prop->name;
+        typeId = QMetaType::type(typeName);
+    }
 #else
     const char *typeName = QT_META_STRINGDATA(meta) + meta->d.data[handle + 1];
     if (!typeName)
