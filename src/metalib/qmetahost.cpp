@@ -257,7 +257,15 @@ bool writeRawParams(QByteArray *ret, const QMetaObject *meta, int handle, void *
             const char *typeName = (const char *)meta->d.stringdata[typeId & TypeNameIndexMask].data();
             typeId = QMetaType::type(typeName);
         }
-        result &= writeRaw(argStream, typeId, argv[i + 1]);
+        bool saved = QMetaType::save(argStream, typeId, argv[i + 1]);
+        if(!saved)
+        {
+            const char *funcName = (const char *)meta->d.stringdata[metaMethod->name].data();
+            qWarning() << "Cannot write meta type" << QMetaType::typeName(typeId)
+                << "in" << (QString(meta->className()) + "::" + funcName);
+        }
+
+        result &= saved;
     }
 #else
     QList<QByteArray> args = methodArguments(meta, handle);
@@ -291,7 +299,15 @@ bool writeRawProp(QByteArray *ret, const QMetaObject *meta, int handle, void **a
     typeId = QMetaType::type(typeName);
 #endif
 
-    return writeRaw(argStream, typeId, argv[0]);
+    bool saved =  QMetaType::save(argStream, typeId, argv[0]);
+    if(!saved)
+    {
+        const char *propName = (const char *)meta->d.stringdata[prop->name].data();
+        qWarning() << "Cannot write meta type" << QMetaType::typeName(typeId)
+            << "in" << (QString(meta->className()) + "::" + propName);
+    }
+
+    return saved;
 }
 
 bool readRawParams(QByteArray *ret, const QMetaObject *meta, uint handle, void **argv)
@@ -312,7 +328,9 @@ bool readRawParams(QByteArray *ret, const QMetaObject *meta, uint handle, void *
 
         if(!loaded)
         {
-            qWarning() << "Cannot read method meta type" << QMetaType::typeName(typeId);
+            const char *funcName = (const char *)meta->d.stringdata[metaMethod->name].data();
+            qWarning() << "Cannot read meta type" << QMetaType::typeName(typeId)
+                << "in" << (QString(meta->className()) + "::" + funcName);
             return false;
         }
     }
@@ -353,7 +371,9 @@ bool readRawProp(QByteArray *ret, const QMetaObject *meta, uint handle, void **a
     bool loaded = QMetaType::load(argStream, typeId, argv[0]);
     if (!loaded)
     {
-        qWarning() << "Cannot read property meta type" << QMetaType::typeName(typeId);
+        const char *propName = (const char *)meta->d.stringdata[prop->name].data();
+        qWarning() << "Cannot read meta type" << QMetaType::typeName(typeId)
+            << "in" << (QString(meta->className()) + "::" + propName);
         return false;
     }
 
@@ -368,23 +388,29 @@ bool readRawReturn(QByteArray *ret, const QMetaObject *meta, int method_index, v
     uint handle = methodHandle(meta, local_index, prop);
 
 #if Q_MOC_OUTPUT_REVISION == 67
-    int metaType = QMetaType::Void;
+    int typeId = QMetaType::Void;
     if(prop)
     {
         const MetaProperty *metaProperty = metaprop(meta->d.data, handle);
-        metaType = metaProperty->type;
+        typeId = metaProperty->type;
     }
     else
     {
         const MetaMethod *metaMethod = method(meta->d.data, handle);
-        metaType = value(meta->d.data, metaMethod->parameters);
+        typeId = value(meta->d.data, metaMethod->parameters);
     }
-    if(metaType != QMetaType::Void)
+
+    if(typeId & IsUnresolvedType) {
+        const char *typeName = (const char *)meta->d.stringdata[typeId & TypeNameIndexMask].data();
+        typeId = QMetaType::type(typeName);
+    }
+
+    if(typeId != QMetaType::Void)
     {
-        bool loaded = QMetaType::load(argStream, metaType, argv);
+        bool loaded = QMetaType::load(argStream, typeId, argv);
         if(!loaded)
         {
-            qWarning() << "Cannot read returned meta type" << QMetaType::typeName(metaType);
+            qWarning() << "Cannot read returned meta type" << QMetaType::typeName(typeId);
             return false;
         }
     }
@@ -977,6 +1003,11 @@ void QMetaHost::processCallMetaMethod(QObject *client, char *data, char **answer
         metaMethod = method(meta->d.data, handle);
         arrayLen += metaMethod->argc + 1;
         typeId = value(meta->d.data, metaMethod->parameters);
+    }
+
+    if(typeId & IsUnresolvedType) {
+        const char *typeName = (const char *)meta->d.stringdata[typeId & TypeNameIndexMask].data();
+        typeId = QMetaType::type(typeName);
     }
 
     void **argv = (void **)QT_MALLOC(arrayLen * sizeof(void *));
