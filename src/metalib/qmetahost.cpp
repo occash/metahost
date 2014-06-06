@@ -457,14 +457,28 @@ void freeParams(const QMetaObject *meta, int method_index, void **argv)
 
 void freeProp(const QMetaObject *meta, int method_index, void **argv)
 {
-    int local_index = local(&meta, method_index, methodOffset);
+    int local_index = local(&meta, method_index, propertyOffset);
     uint handle = methodHandle(meta, local_index);
+    int typeId = QMetaType::Void;
+
+#if Q_MOC_OUTPUT_REVISION == 67
+    const MetaProperty *metaProp = metaprop(meta->d.data, handle);
+    typeId = metaProp->type;
+
+    if(typeId & IsUnresolvedType) {
+        const char *typeName = (const char *)meta->d.stringdata[typeId & TypeNameIndexMask].data();
+        typeId = QMetaType::type(typeName);
+    }
+#else
     const char *typeName = QT_META_STRINGDATA(meta) + meta->d.data[handle + 1];
     if (!typeName)
         return;
 
-    int typeId = QMetaType::type(typeName);
-    QMetaType::destroy(typeId, argv[1]);
+    typeId = QMetaType::type(typeName);
+#endif
+
+    if(typeId != QMetaType::Void)
+        QMetaType::destroy(typeId, argv[0]);
 }
 
 //******************************Private hooks************************************
@@ -643,6 +657,9 @@ int QMetaHost::invokeRemoteMethod(QObject *_o, QMetaObject::Call _c, int _id, vo
     if(holder.param.callType != _c ||
         holder.param.methodIndex != _id)
         return 1;
+
+    if(_c == QMetaObject::WriteProperty)
+        return holder.param.returnId;
 
     bool isProp = (_c == QMetaObject::ReadProperty) ||
         ((_c >= QMetaObject::ResetProperty) && 
@@ -1068,10 +1085,11 @@ void QMetaHost::processCallMetaMethod(QObject *client, char *data, char **answer
     if (writeProp)
         freeProp(meta, id, argv);
     else if (!prop)
+    {
+        if(typeId != QMetaType::Void)
+            QMetaType::destroy(typeId, argv[0]);
         freeParams(meta, id, argv);
-
-    if(typeId != QMetaType::Void)
-        QMetaType::destroy(typeId, argv[0]);
+    }
 
     QT_FREE(argv);
 }
