@@ -458,7 +458,7 @@ void freeParams(const QMetaObject *meta, int method_index, void **argv)
 void freeProp(const QMetaObject *meta, int method_index, void **argv)
 {
     int local_index = local(&meta, method_index, propertyOffset);
-    uint handle = methodHandle(meta, local_index);
+    uint handle = methodHandle(meta, local_index, true);
     int typeId = QMetaType::Void;
 
 #if Q_MOC_OUTPUT_REVISION == 67
